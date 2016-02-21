@@ -1,0 +1,20 @@
+ syslib authors
+ ==============
+
+Library syslib is the library designed to allow users to do Linux system
+administration tasks as well as dynamically load database systems incl.
+sqlite3.
+
+For compilation header files of following components are required:
+- OpenSSL crypto
+- sqlite3
+- libpq (PostgreSQL)
+- mariadb/MySQL
+
+Library was written:
+
+	Michal Novotny <mignov@gmail.com>
+
+If you want to contribute to the algorithm feel free to post patches to
+the address/maintainer address written above and you'll be listed as one
+of the authors as well.

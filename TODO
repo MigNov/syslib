@@ -1,0 +1,10 @@
+Items to be done:
+
+- Implement minCrypt library support with option to enable encryption for all DB systems
+- PgSQL implement automatic reconnect option and get version
+- Implement also MySQL/MariaDB
+  - https://mariadb.com/kb/en/mariadb/mariadb-connectorc-api-functions/
+- Add APIs to get version of all connectors (sqlite3, pgsql, mysql/mariaDB etc.)
+- Add mongoDB support (?)
+- Allow AES-128 and AES-256 selection via API
+
