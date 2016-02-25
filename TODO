@@ -7,4 +7,5 @@ Items to be done:
 - Add APIs to get version of all connectors (sqlite3, pgsql, mysql/mariaDB etc.)
 - Add mongoDB support (?)
 - Allow AES-128 and AES-256 selection via API
-
+- Merge internal database system (IDB) from CDVWS project and introduce handlers for
+  my (author's) features for other projects as well
