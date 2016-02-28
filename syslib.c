@@ -1499,9 +1499,10 @@ char *syslibSystemUUID(void)
  * Get AES encrypted string by UUID
  *
  * @param  str  original string
+ * @param  useAES256 flag whether to use better encryption (AES-256) or standard AES-128
  * @return encrypted string in base64 form, $9$ prefixed
  */
-char *syslibAESEncrypt(char *str)
+char *syslibAESEncrypt(char *str, int useAES256)
 {
 	char ret[4096] = { 0 };
 	char *tmp = NULL;
@@ -1509,14 +1510,17 @@ char *syslibAESEncrypt(char *str)
 	if (str == NULL)
 		return NULL;
 
-	tmp = aesEncryptData(str, NULL, 0);
+	tmp = aesEncryptData(str, NULL, 0, useAES256);
 
 	if (tmp == NULL) {
 		logWrite(LOG_LEVEL_ERROR, "Machine specific encryption failed\n");
 		return NULL;
 	}
 
-	snprintf(ret, sizeof(ret), "$9$%s", tmp);
+	if (useAES256)
+		snprintf(ret, sizeof(ret), "$A$%s", tmp);
+	else
+		snprintf(ret, sizeof(ret), "$9$%s", tmp);
 	free(tmp);
 
 	logWrite(LOG_LEVEL_DEBUG, "Machine specific encryption for string '%s' returned '%s'\n",
@@ -1534,7 +1538,7 @@ char *syslibAESDecrypt(char *str)
 {
 	if (str == NULL)
 		return NULL;
-	char *ret = aesDecryptData(str + 3, NULL, 0);
+	char *ret = aesDecryptData(str + 3, NULL, 0, (str[1] == 'A') ? 1 : 0);
 	if (ret == NULL)
 		logWrite(LOG_LEVEL_ERROR, "Machine specific decryption failed\n");
 	else
@@ -1565,7 +1569,7 @@ char *syslibGetConnectionString(char *key)
 		return NULL;
 
 	if (strncmp(k, "$9$", 3) == 0)
-		ret = aesDecryptData(k + 3, NULL, 0);
+		ret = aesDecryptData(k + 3, NULL, 0, (k[1] == 'A') ? 1 : 0);
 	else
 		ret = strdup(k);
 
@@ -2738,7 +2742,7 @@ int _optionsSetData(char *key, char *appname)
 
 		if (strncmp(k, "$9$", 3) == 0) {
 			DPRINTF("%s: Encrypted configuration data are '%s'\n", __FUNCTION__, k);
-			tmp = aesDecryptData(k + 3, NULL, 0);
+			tmp = aesDecryptData(k + 3, NULL, 0, (k[1] == 'A') ? 1 : 0);
 			DPRINTF("%s: Decrypted configuration data are '%s'\n", __FUNCTION__, tmp);
 		}
 		else {

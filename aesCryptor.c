@@ -12,25 +12,16 @@
 
 #include "aesCryptor.h"
 
-// Use AES-128
-//#define	METHOD		EVP_aes_128_cbc
-//#define 	LEN_IV		16
-//#define 	LEN_IVB64	24
-
-// Use AES-256
-#define		METHOD		EVP_aes_256_cbc
-#define		LEN_IV		32
-#define		LEN_IVB64	44
-
 /* Prototype */
 long _gettid(void);
 
-int aesEncrypt(unsigned char *aesKey, unsigned char *aesIV, const unsigned char *msg, size_t msgLen, unsigned char **encMsg)
+int aesEncrypt(unsigned char *aesKey, unsigned char *aesIV, const unsigned char *msg, size_t msgLen, unsigned char **encMsg, int useAES256)
 {
 	int i;
 	size_t blockLen  = 0;
 	size_t encMsgLen = 0;
 	EVP_CIPHER_CTX *aesCtx = NULL;
+	int len_iv = (useAES256) ? 32 : 16;
 
 #ifdef DEBUG_AES
 	printf("[debug/crypto] aesEncrypt key: ");
@@ -39,7 +30,7 @@ int aesEncrypt(unsigned char *aesKey, unsigned char *aesIV, const unsigned char 
 	printf("\n");
 
 	printf("[debug/crypto] aesEncrypt vector: ");
-	for (i = 0; i < LEN_IV; i++)
+	for (i = 0; i < len_iv; i++)
 		printf("%02X ", aesIV[i]);
 	printf("\n");
 #endif
@@ -50,11 +41,11 @@ int aesEncrypt(unsigned char *aesKey, unsigned char *aesIV, const unsigned char 
 
 	EVP_CIPHER_CTX_init(aesCtx);
 
- 	*encMsg = (unsigned char*)malloc(msgLen + LEN_IV);
+	*encMsg = (unsigned char*)malloc(msgLen + len_iv);
 	if(encMsg == NULL)
 		return -1;
- 
-	if(!EVP_EncryptInit_ex(aesCtx, METHOD(), NULL, aesKey, aesIV))
+
+	if(!EVP_EncryptInit_ex(aesCtx, (useAES256) ? EVP_aes_256_cbc() : EVP_aes_128_cbc(), NULL, aesKey, aesIV))
 		return -2;
  
 	if (!EVP_EncryptUpdate(aesCtx, *encMsg, (int*)&blockLen, (unsigned char*)msg, msgLen))
@@ -72,12 +63,13 @@ int aesEncrypt(unsigned char *aesKey, unsigned char *aesIV, const unsigned char 
 	return encMsgLen + blockLen;
 }
 
-int aesDecrypt(unsigned char *aesKey, unsigned char *aesIV, unsigned char *encMsg, size_t encMsgLen, unsigned char **decMsg)
+int aesDecrypt(unsigned char *aesKey, unsigned char *aesIV, unsigned char *encMsg, size_t encMsgLen, unsigned char **decMsg, int useAES256)
 {
 	int i, ret = 0;
 	size_t decLen = 0;
 	size_t blockLen = 0;
 	EVP_CIPHER_CTX *aesCtx = NULL;
+	int len_iv = (useAES256) ? 32 : 16;
 
 	if ((aesIV == NULL) || (encMsg == NULL))
 		return -EINVAL;
@@ -89,7 +81,7 @@ int aesDecrypt(unsigned char *aesKey, unsigned char *aesIV, unsigned char *encMs
 	printf("\n");
 
 	printf("[debug/crypto] aesDecrypt vector: ");
-	for (i = 0; i < LEN_IV; i++)
+	for (i = 0; i < len_iv; i++)
 		printf("%02X ", aesIV[i]);
 	printf("\n");
 #endif
@@ -109,7 +101,7 @@ int aesDecrypt(unsigned char *aesKey, unsigned char *aesIV, unsigned char *encMs
 		goto cleanup;
 	}
 
-	if (!EVP_DecryptInit_ex(aesCtx, METHOD(), NULL, aesKey, aesIV)) {
+	if (!EVP_DecryptInit_ex(aesCtx, (useAES256) ? EVP_aes_256_cbc() : EVP_aes_128_cbc(), NULL, aesKey, aesIV)) {
 		ret = -3;
 		goto cleanup;
 	}
@@ -130,9 +122,6 @@ int aesDecrypt(unsigned char *aesKey, unsigned char *aesIV, unsigned char *encMs
 
 	ret = (int)decLen;
 cleanup:
-//	if (*decMsg != NULL)
-//		free(decMsg);
-
 	if (aesCtx != NULL) {
 		EVP_CIPHER_CTX_cleanup(aesCtx);
 		free(aesCtx);
@@ -355,7 +344,7 @@ char *getMd5Sum(char *val)
 	return strdup(md5);
 }
 
-unsigned char *aesEncryptDataSafe(unsigned char *input, int len, char *pass, int raw)
+unsigned char *aesEncryptDataSafe(unsigned char *input, int len, char *pass, int raw, int useAES256)
 {
 	int i, fd, aesLen, tLen;
 	char *ret = NULL;
@@ -364,45 +353,44 @@ unsigned char *aesEncryptDataSafe(unsigned char *input, int len, char *pass, int
 	unsigned char *iv = NULL;
 	unsigned char *key = NULL;
 	unsigned char *retMsg = NULL;
+	short len_iv = (useAES256) ? 32 : 16;
 
         if (pass == NULL)
-                key = UUIDToRaw(NULL, LEN_IV);
+                key = UUIDToRaw(NULL, len_iv);
         if ((pass != NULL) && (raw == 1))
-                key = UUIDToRaw(pass, LEN_IV);
+                key = UUIDToRaw(pass, len_iv);
         if ((pass != NULL) && (raw == 0))
-                key = UUIDToRaw(getMd5Sum(pass), LEN_IV);
+                key = UUIDToRaw(getMd5Sum(pass), len_iv);
 
 	if (key == NULL)
 		return NULL;
 
-//	free(key); return NULL;
+	iv = (unsigned char *)malloc( len_iv * sizeof(unsigned char) );
 
-	iv = (unsigned char *)malloc( LEN_IV * sizeof(unsigned char) );
-	memset(iv, 0, sizeof(iv));
-
-	/* Get LEN_IV random bytes for IV */
+	/* Get random bytes for IV */
 	fd = open("/dev/urandom", O_RDONLY);
-	read(fd, iv, LEN_IV);
+	read(fd, iv, len_iv);
 	close(fd);
 
 #ifdef DEBUG_AES
+	printf("[debug/crypto] Using AES-%d\n", (useAES256) ? 256 : 128);
 	printf("[debug/crypto] Encryption key value: ");
 	for (i = 0; i < strlen(key); i++)
 		printf("%02X ", key[i]);
 	printf("\n");
 	printf("[debug/crypto] Generated encryption vector: ");
-	for (i = 0; i < LEN_IV; i++)
+	for (i = 0; i < len_iv; i++)
 		printf("%02X", iv[i]);
 	printf("\n");
 #endif
 
-	aesLen = aesEncrypt(key, iv, input, len, &retMsg);
+	aesLen = aesEncrypt(key, iv, input, len, &retMsg, useAES256);
 
 #ifdef DEBUG_AES
 	printf("[debug/crypto] Encrypted key length: %d\n", aesLen);
 #endif
 
-	ivStr = base64_encode(iv, LEN_IV);
+	ivStr = base64_encode(iv, len_iv);
 	retStr = base64_encode(retMsg, aesLen);
 
 	tLen = strlen(ivStr) + strlen(retStr) + 1;
@@ -423,12 +411,12 @@ unsigned char *aesEncryptDataSafe(unsigned char *input, int len, char *pass, int
 	return ret;
 }
 
-unsigned char *aesEncryptData(unsigned char *input, char *pass, int raw)
+unsigned char *aesEncryptData(unsigned char *input, char *pass, int raw, int useAES256)
 {
-	return aesEncryptDataSafe(input, strlen(input), pass, raw);
+	return aesEncryptDataSafe(input, strlen(input), pass, raw, useAES256);
 }
 
-unsigned char *aesDecryptDataSafe(unsigned char *input, int *size, char *pass, int raw)
+unsigned char *aesDecryptDataSafe(unsigned char *input, int *size, char *pass, int raw, int useAES256)
 {
 	int i, msgLen, aesLen, ivB64s;
 	unsigned char *iv = NULL;
@@ -436,43 +424,46 @@ unsigned char *aesDecryptDataSafe(unsigned char *input, int *size, char *pass, i
 	unsigned char *msg = NULL;
 	unsigned char *ivB64 = NULL;
 	unsigned char *retMsg = NULL;
+	int len_iv = (useAES256) ? 32 : 16;
+	int len_ivb64 = (useAES256) ? 44 : 24;
 
 	if (pass == NULL)
-		key = UUIDToRaw(NULL, LEN_IV);
+		key = UUIDToRaw(NULL, len_iv);
 	else
 	if ((pass != NULL) && (raw == 1))
-		key = UUIDToRaw(pass, LEN_IV);
+		key = UUIDToRaw(pass, len_iv);
 	if ((pass != NULL) && (raw == 0))
-		key = UUIDToRaw(getMd5Sum(pass), LEN_IV);
+		key = UUIDToRaw(getMd5Sum(pass), len_iv);
 
 	/* Get first base64 encoded LEN_IV bytes and decode them - IV */
-	ivB64 = (unsigned char *)malloc( LEN_IVB64 * sizeof(unsigned char) );
+	ivB64 = (unsigned char *)malloc( len_ivb64 * sizeof(unsigned char) );
 	if (ivB64 == NULL) {
 		errno = -ENOMEM;
 		return NULL;
 	}
-	memcpy(ivB64, input, LEN_IVB64);
-	ivB64s = LEN_IVB64;
+	memcpy(ivB64, input, len_ivb64);
+	ivB64s = len_ivb64;
 	iv = base64_decode(ivB64, &ivB64s);
-	msgLen = strlen(input) - LEN_IVB64;
-	msg = base64_decode(input + LEN_IVB64, &msgLen);
+	msgLen = strlen(input) - len_ivb64;
+	msg = base64_decode(input + len_ivb64, &msgLen);
 
 #ifdef DEBUG_AES
+	printf("[debug/crypto] Using AES-%d\n", (useAES256) ? 256 : 128);
 	printf("[debug/crypto] Encrypted input: '%s'\n", input);
 	printf("[debug/crypto] Encrypted vector in base64 form: '%s'\n", ivB64);
-	printf("[debug/crypto] Encrypted message: '%s'\n", input + LEN_IVB64);
+	printf("[debug/crypto] Encrypted message: '%s'\n", input + len_ivb64);
 
 	printf("[debug/crypto] Decryption key value: ");
-	for (i = 0; i < LEN_IV; i++)
+	for (i = 0; i < len_iv; i++)
 		printf("%02X ", key[i]);
 	printf("\n");
 	printf("[debug/crypto] Decryption vector: ");
-	for (i = 0; i < LEN_IV; i++)
+	for (i = 0; i < len_iv; i++)
 		printf("%02X", iv[i]);
 	printf("\n");
 #endif
 
-	aesLen = aesDecrypt(key, iv, msg, msgLen, &retMsg);
+	aesLen = aesDecrypt(key, iv, msg, msgLen, &retMsg, useAES256);
 	if (aesLen > 0)
 		retMsg[aesLen] = 0;
 	else
@@ -493,30 +484,39 @@ unsigned char *aesDecryptDataSafe(unsigned char *input, int *size, char *pass, i
 	return retMsg;
 }
 
-unsigned char *aesDecryptData(unsigned char *input, char *pass, int raw)
+unsigned char *aesDecryptData(unsigned char *input, char *pass, int raw, int useAES256)
 {
-	return aesDecryptDataSafe(input, NULL, pass, raw);
+	return aesDecryptDataSafe(input, NULL, pass, raw, useAES256);
 }
 
-unsigned char *aesProcessData(unsigned char *input, char *pass, int raw)
+unsigned char *aesProcessData(unsigned char *input, char *pass, int raw, int useAES256)
 {
 	if (input == NULL)
 		return NULL;
 
-	int decrypt = (strncmp(input, "$9$", 3) == 0) ? 1 : 0;
+	int decryptA = (strncmp(input, "$9$", 3) == 0) ? 1 : 0;
+	int decryptB = (strncmp(input, "$A$", 3) == 0) ? 1 : 0;
 #ifdef DEBUG_AES
-	printf("[debug/crypto] Detected mode: %scryption\n", decrypt ? "De" : "En");
+	printf("[debug/crypto] Detected mode: %scryption\n", (decryptA || decryptB) ? "De" : "En");
 #endif
-	if (decrypt)
-                return aesDecryptData(input + 3, pass, raw);
+	if (decryptA || decryptB)
+                return aesDecryptData(input + 3, pass, raw, decryptB);
         else {
 		unsigned char *tmp = (unsigned char *)malloc( (strlen(input) + 3) *
 					sizeof(unsigned char));
-		unsigned char *enc = aesEncryptData(input, pass, raw);
 
-		strcpy(tmp, "$9$");
-		strcat(tmp, enc);
-		free(enc);
+		if (useAES256) {
+			unsigned char *enc = aesEncryptData(input, pass, raw, 1);
+			strcpy(tmp, "$A$");
+			strcat(tmp, enc);
+			free(enc);
+		}
+		else {
+			unsigned char *enc = aesEncryptData(input, pass, raw, 0);
+			strcpy(tmp, "$9$");
+			strcat(tmp, enc);
+			free(enc);
+		}
 		
                 return tmp;
 	}

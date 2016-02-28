@@ -121,13 +121,23 @@ int main(void)
 
 	char *uuid = syslibSystemUUID();
 	printf("UUID: %s\n", uuid);
-	char *enc = syslibAESEncrypt("test");
-	char *dec = syslibAESDecrypt(enc);
-	printf("Encrypted 'test': %s\n", enc);
-	printf("Decrypted '%s': %s\n", enc, dec);
 	free(uuid);
+
+	/* Test AES-128 encryption and decryption */
+	char *enc = syslibAESEncrypt("test", 0);
+	char *dec = syslibAESDecrypt(enc);
+	printf("[AES-128] Encrypted 'test': %s\n", enc);
+	printf("[AES-128] Decrypted '%s': %s\n", enc, dec);
 	free(enc);
 	free(dec);
+
+	/* Test AES-256 encryption and decryption */
+	char *enc2 = syslibAESEncrypt("test", 1);
+	char *dec2 = syslibAESDecrypt(enc2);
+	printf("[AES-256] Encrypted 'test': %s\n", enc2);
+	printf("[AES-256] Decrypted '%s': %s\n", enc2, dec2);
+	free(enc2);
+	free(dec2);
 
 	char *tmpIf = syslibQueryGetSingle("table", "val", shorthn, "interface = '"INTERFACE"'", NULL);
 	printf("Value for %s is: %s\n", INTERFACE, tmpIf);

@@ -1160,8 +1160,8 @@ char *getConnectionString(char *typ)
 	if (pgConn == NULL)
 		return NULL;
 
-	if (strncmp(pgConn, "$9$", 3) == 0) {
-		char *tmp = aesDecryptData(pgConn + 3, NULL, 0);
+	if ((strncmp(pgConn, "$9$", 3) == 0) || (strncmp(pgConn, "$A$", 3) == 0)) {
+		char *tmp = aesDecryptData(pgConn + 3, NULL, 0, (pgConn[1] == 'A') ? 1 : 0);
 		free(pgConn);
 		pgConn = tmp;
 	}
