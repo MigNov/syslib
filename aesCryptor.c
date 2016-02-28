@@ -13,7 +13,7 @@
 #include "aesCryptor.h"
 
 // Use AES-128
-//#define		METHOD		EVP_aes_128_cbc
+//#define	METHOD		EVP_aes_128_cbc
 //#define 	LEN_IV		16
 //#define 	LEN_IVB64	24
 

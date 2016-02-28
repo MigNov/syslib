@@ -312,10 +312,14 @@ int _syslibGetCurrent(void);
 int pqConnect(char *connstr, PGconn *conn);
 void _syslibConfCriticalSectionEnter(void);
 void _syslibConfCriticalSectionLeave(void);
+void _syslibEnsureConnection(void);
 
 /* Public functions */
 extern int    syslibInit(char *key, char *appname);
-extern int    syslibConfSensorOnly(void);
+extern void   syslibSetBTHandlers(void);
+extern pid_t  syslibGetParentPID(pid_t pid);
+extern char * syslibGetProcessName(pid_t pid);
+extern char * syslibGetProcessTree(pid_t pid);
 extern int    syslibSetLogging(char *debugFile, int flags);
 extern void   syslibDebugDump(void);
 extern char * syslibSystemUUID(void);

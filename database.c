@@ -143,6 +143,7 @@ char *pqSelect(char *query, char *field)
         tsec =  (((tv1.tv_sec * 1000000) + tv1.tv_usec) -
                 ((tv2.tv_sec * 1000000) + tv2.tv_usec)) / 1000000.;
 
+	_syslibEnsureConnection();
 	res = dPQexec(conn, query);
 	if (dPQresultStatus(res) != PGRES_TUPLES_OK) {
 		DPRINTF("%s: Query failed (%s) [TID #%d]\n", __FUNCTION__,
@@ -240,6 +241,7 @@ tQueryResult pqSelectAdvanced(char *query, int numFields, char **fields)
         tsec =  (((tv1.tv_sec * 1000000) + tv1.tv_usec) -
                 ((tv2.tv_sec * 1000000) + tv2.tv_usec)) / 1000000.;
 
+	_syslibEnsureConnection();
 	res = dPQexec(conn, query);
 	if (dPQresultStatus(res) != PGRES_TUPLES_OK) {
 		DPRINTF("%s: Query failed (%s) [TID #%d]\n", __FUNCTION__,
@@ -362,6 +364,7 @@ int pqExecute(char *query)
 		}
 	}
 
+	_syslibEnsureConnection();
         DPRINTF("%s: Query is '%s'\n", __FUNCTION__, query);
 	libLogToFile(LOG_SQL, "%s: Query is '%s'\n", __FUNCTION__, query);
 

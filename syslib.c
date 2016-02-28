@@ -30,6 +30,12 @@ do {} while(0)
 char *gSSHUserStateFile = NULL;
 char *gLocalizationPath = NULL;
 
+typedef struct tTPids {
+	int num;
+	int *pid;
+	char **name;
+} tTPids;
+
 /* Logging implementation */
 
 /**
@@ -294,6 +300,188 @@ void _syslibHandleZombies(void)
 		__FUNCTION__, query, ret, _gettid());
 
 	syslibQueryResultFree(ret);
+}
+
+typedef void InfoHandler(int, siginfo_t *, void *);
+
+/*
+ * Signal handler for SIGABRT
+ *
+ * @param sig signal number
+ * @param info process signal information
+ * @param vp   dummy argument
+ * @return None
+ */
+void _sighandler_bt(int sig, siginfo_t* info, void* vp)
+{
+	char tmp[1024] = { 0 };
+	int pid = getpid();
+
+	if ((sig == SIGABRT) || (sig == SIGSEGV)) {
+		char fn[1024] = { 0 };
+		char buf[1024] = { 0 };
+		char cmd[1024] = { 0 };
+
+		snprintf(tmp, sizeof(tmp), "/proc/%d/cmdline", pid);
+		FILE *fp = fopen(tmp, "r");
+		if (fp != NULL) {
+			fgets(buf, sizeof(buf), fp);
+			fclose(fp);
+		}
+		else
+			strcpy(buf, "unknown");
+
+		snprintf(fn, sizeof(fn), "/tmp/backtrace-%d", time(NULL));
+		snprintf(tmp, sizeof(tmp), "echo \"Binary: %s. PID: %d\" > %s", buf, pid, fn);
+		system(tmp);
+		snprintf(cmd, sizeof(cmd), "gdb -p %d --batch -ex \"thread apply all bt full\"", pid);
+		snprintf(tmp, sizeof(tmp), "echo \"Command: %s\" >> %s; echo >> %s", cmd, fn, fn);
+		system(tmp);
+		snprintf(tmp, sizeof(tmp), "%s >> %s 2> /dev/null", cmd, fn);
+		system(tmp);
+		if (access(fn, F_OK) == 0) {
+			snprintf(tmp, sizeof(tmp), "logger -t \"%s[%d]\" \"Backtrace saved to %s\"", buf, pid, fn);
+			system(tmp);
+		}
+		exit(0);
+	}
+}
+
+/*
+ *  Introduce signal handler with information
+ *
+ *  @param signum  signal to handle
+ *  @param handler handler to process signal
+ *  @return old handler
+ */
+InfoHandler*
+_syslibSignalWithInfo(int signum, InfoHandler* handler)
+{
+	struct sigaction action, old_action;
+
+	memset(&action, 0, sizeof(struct sigaction));
+	action.sa_sigaction = handler;
+	sigemptyset(&action.sa_mask); /* block sigs of type being handled */
+	action.sa_flags = SA_RESTART|SA_SIGINFO; /* restart syscalls if possible */
+
+	sigaction(signum, &action, &old_action);
+	return (old_action.sa_sigaction);
+}
+
+/**
+ * Get parent process ID for PID
+ *
+ * @param pid process to get it's parent PID
+ * @return process parent pid
+ */
+pid_t syslibGetParentPID(pid_t pid)
+{
+	FILE *fp = NULL;
+	char pd[128] = { 0 };
+	char cmd[1024] = { 0 };
+	int ret = 0;
+
+	snprintf(cmd, sizeof(cmd), "/proc/%d/status", pid);
+	if (access(cmd, R_OK) != 0)
+		return 0;
+
+	fp = fopen(cmd, "r");
+	if (fp == NULL)
+		return 0;
+
+	while (!feof(fp)) {
+		fgets(pd, sizeof(pd), fp);
+		if (strncmp(pd, "PPid:", 5) == 0) {
+			ret = atoi(pd + 6);
+		}
+	}
+	fclose(fp);
+
+	return ret;
+}
+
+/**
+ * Get process name
+ *
+ * @param pid process to get it's name
+ * @return process name
+ */
+char *syslibGetProcessName(pid_t pid)
+{
+	FILE *fp = NULL;
+	char pd[1024] = { 0 };
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "/proc/%d/cmdline", pid);
+	if (access(cmd, R_OK) != 0)
+		return NULL;
+
+	fp = fopen(cmd, "r");
+	if (fp == NULL)
+		return 0;
+	fgets(pd, sizeof(pd), fp);
+	fclose(fp);
+
+	return strdup(pd);
+}
+
+/**
+ * Get process tree
+ *
+ * TODO: Rewrite to support formatting like "[PID %p] %n" where %p is PID and %n is process name [!!!]
+ *
+ * @param pid process to get it's process tree
+ * @return process tree as string
+ */
+char *syslibGetProcessTree(pid_t pid)
+{
+	int j, i = 0;
+	char *tmp = NULL;
+	char tmps[1024] = { 0 };
+	char ret[8192] = { 0 };
+	tTPids tp;
+
+	tp.num = 15;
+	tp.pid = (int *)malloc( tp.num * sizeof(int) );
+	tp.name = (char **)malloc( tp.num * sizeof(char *) );
+
+	while (pid > 0) {
+		tmp = syslibGetProcessName(pid);
+		tp.pid[i] = pid;
+		tp.name[i] = tmp;
+		i++;
+
+		pid = syslibGetParentPID(pid);
+	}
+
+	for (j = i - 1; j >= 0; j--) {
+		if (tp.name[j] != NULL)
+			snprintf(tmps, sizeof(tmps), "%s [PID %d] => ", tp.name[j], tp.pid[j]);
+		else
+			snprintf(tmps, sizeof(tmps), "[PID %d] => ", tp.pid[j]);
+
+		strcat(ret, tmps);
+	}
+
+	ret[strlen(ret) - 4] = 0;
+
+	for (j = 0; j < i; j++)
+		free(tp.name[j]);
+	free(tp.name);
+	free(tp.pid);
+
+	return strdup(ret);
+}
+
+/*
+ * Initialize SIGABRT and SIGSEGV handlers
+ *
+ * @return None
+ */
+void syslibSetBTHandlers(void)
+{
+	_syslibSignalWithInfo(SIGABRT, _sighandler_bt);
+	_syslibSignalWithInfo(SIGSEGV, _sighandler_bt);
 }
 
 /**
@@ -2679,6 +2867,40 @@ int syslibCheckRunningAsShell(void)
 	return ret;
 }
 
+/*
+ * Ensure database connection to PostgreSQL server is established
+ *
+ * @return None
+ */
+void _syslibEnsureConnection_PQ(void)
+{
+	int id = _syslibGetCurrent();
+	if (id < 0) {
+		logWrite(LOG_LEVEL_WARNING, "%s: Cannot reconnect TID #%d\n", _gettid());
+		return;
+	}
+
+	if (dPQstatus(instances[id].dbconnptr) != CONNECTION_OK) {
+		if (instances[id].dbconn != NULL) {
+			if (pqConnect(instances[id].dbconn, NULL))
+				logWrite(LOG_LEVEL_ERROR, "%s: Re-connection failed\n", __FUNCTION__);
+		}
+	}
+}
+
+/*
+ * Ensure connection is established if applicable
+ *
+ * @return None
+ */
+void _syslibEnsureConnection(void)
+{
+	int id = _syslibGetCurrent();
+
+	if (strncmp(instances[id].dbconn, "postgresql://", 13) == 0)
+		_syslibEnsureConnection_PQ();
+}
+
 /**
  * Library initialization function
  *
@@ -2718,6 +2940,7 @@ int syslibInit(char *key, char *appname)
 	dPQnfields = NULL;
 	dPQgetvalue = NULL;
 	dPQclear = NULL;
+	dPQstatus = NULL;
 
 	DPRINTF("Initializing syslib version %s (TID #%d)\n",
 		SYSLIB_VERSION, _gettid());
@@ -2731,6 +2954,7 @@ int syslibInit(char *key, char *appname)
 	gInitDone = _syslibGetInitDone();
 	/* If connection initialization was already done then reuse existing connection */
 	if (gInitDone == 1) {
+		_syslibEnsureConnection();
 		logWrite(LOG_LEVEL_DEBUG, "%s: Connection reused for TID #%d\n", __FUNCTION__, _gettid() );
 		DPRINTF("%s: Connection reused for TID #%d\n", __FUNCTION__, _gettid() );
 		return 0;

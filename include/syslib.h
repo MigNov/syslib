@@ -219,7 +219,7 @@ extern void   syslibSQLiteFree(void);
 
 extern int    syslibPQInit(void);
 extern int    syslibHasPQLib(void);
-extern void   syslibPQSetMessageProcessor(tPQMessageProcessorFunc func);
+extern void   syslibPQSetMessageProcessor(tPQMessageProcesorFunc func);
 extern void   syslibPQFree(void);
 
 extern void   syslibFree(void);
