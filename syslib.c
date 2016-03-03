@@ -1,4 +1,5 @@
 #include "syslib.h"
+#include "version_rev.h"
 
 //#define DEBUG_LIB
 //#define DEBUG_LIB_CS
@@ -2689,6 +2690,16 @@ int syslibGetVersion(int *major, int *minor, int *micro)
 	tokensFree(t);
 
 	return 0;
+}
+
+/*
+ * Get revision of syslib library
+ *
+ * @return revision
+ */
+char *syslibGetRevision(void)
+{
+	return strdup(VERSION_REV);
 }
 
 /**

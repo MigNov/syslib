@@ -329,6 +329,7 @@ extern unsigned int syslibConvertTimestampToUnix(char *ts);
 extern char * syslibQueryGetSingle(char *table, char *field, char *sensor, char *conditionAppend, char *def);
 extern char **syslibQueryGetArray(char *table, char *field, int *out, char *sensor, char *conditionAppend);
 extern int    syslibGetVersion(int *major, int *minor, int *micro);
+extern char * syslibGetRevision(void);
 extern char * syslibAESEncrypt(char *str, int useAES256);
 extern char * syslibAESDecrypt(char *str);
 extern int    syslibEnvSet(char *name, char *val);

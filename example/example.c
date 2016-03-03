@@ -139,6 +139,10 @@ int main(void)
 	free(enc2);
 	free(dec2);
 
+	char *rev = syslibGetRevision();
+	printf("Library syslib revision: %s\n", rev);
+	free(rev);
+
 	char *tmpIf = syslibQueryGetSingle("table", "val", shorthn, "interface = '"INTERFACE"'", NULL);
 	printf("Value for %s is: %s\n", INTERFACE, tmpIf);
 	free(tmpIf);
