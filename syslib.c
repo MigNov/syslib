@@ -213,7 +213,10 @@ void *_syslibAlloc(size_t size)
 	void *ret = NULL;
 
 	ret = malloc(size);
-	DPRINTF("%s(%d) allocated %p\n", __FUNCTION__, size, ret);
+	if (ret == NULL)
+		DPRINTF("%s(%d) allocated failed to allocate %d bytes\n", __FUNCTION__, size, size);
+	else
+		DPRINTF("%s(%d) allocated %d bytes at %p\n", __FUNCTION__, size, size, ret);
 
 	return ret;
 }
@@ -276,6 +279,7 @@ void _syslibHandleZombies(void)
 		}
 		tokensFree(t);
 	}
+	free(tmp);
 
 	if (appName == NULL)
 		return;
@@ -292,6 +296,8 @@ void _syslibHandleZombies(void)
 		}
 	}
 
+	free(appName);
+	freeQueryResult(ret);
 	free(vars[0]);
 	free(vars);
 
@@ -669,10 +675,7 @@ void *_syslibValidatePointer(void *ptr, int *changed)
  */
 void _syslibPointerFix(void)
 {
-	int i, c1, c2;
-
-	DPRINTF("%s: Entering fixing ...\n",
-		__FUNCTION__);
+	int i, c1, c2, rd = 0;
 
 	if ((nInstances == 0) || (instances == NULL))
 		return;
@@ -681,11 +684,14 @@ void _syslibPointerFix(void)
 		instances[i].dbconn = _syslibValidatePointer(instances[i].dbconn, &c1);
 		instances[i].dbconnptr = _syslibValidatePointer(instances[i].dbconnptr, &c2);
 
-		if (c1 || c2)
+		if (c1 || c2) {
 			DPRINTF("%s: Fixed pointers for #%d\n", __FUNCTION__, i);
+			rd++;
+		}
 	}
 
-	DPRINTF("%s: Fixer code done\n", __FUNCTION__);
+	if (rd > 0)
+		DPRINTF("%s: Fixer fixed %d entry/entries\n", __FUNCTION__, rd);
 }
 
 /**
@@ -750,6 +756,9 @@ void _syslibDumpInstances(int dumpToLog)
 void _syslibEntrySwap(int id1, int id2)
 {
 	tInstance i1, i2;
+
+	if (id1 == id2)
+		return;
 
 	DPRINTF("%s: Swapping entries #%d and #%d (i[%d] = i[%d])\n", __FUNCTION__, id1, id2, id1, id2);
 
@@ -844,6 +853,17 @@ int _syslibEntryDealloc(long tid)
 	_syslibFree(instances[nInstances - 1].dbconn);
 	_syslibFree(instances[nInstances - 1].debugFile);
 
+	if (instances[id].dbconnptr == instances[nInstances - 1].dbconnptr) {
+		instances[id].dbconnptr = instances[nInstances - 1].dbconnptr;
+	}
+	else {
+		if (dPQfinish != NULL) {
+			dPQfinish(instances[nInstances - 1].dbconnptr);
+			_syslibFree(instances[nInstances - 1].dbconnptr);
+			instances[nInstances - 1].dbconnptr = NULL;
+		}
+	}
+
 	instances[nInstances - 1].dbconn = NULL;
 	_syslibPointerFix();
 
@@ -873,6 +893,10 @@ int _syslibEntryDealloc(long tid)
 		__FUNCTION__, nInstances, _gettid() );
 
 	_syslibDumpInstances(0);
+
+	if (nInstances == 0) {
+		_syslibFree(instances);
+	}
 
 	DPRINTF_CS("%s: About to leave critical section [TID #%d]\n", __FUNCTION__, _gettid() );
 	_syslibCriticalSectionLeave();
@@ -928,7 +952,7 @@ int _syslibEntryAlterDBConnTID(long tid, char *dbconn)
  * Alter database connection pointer
  *
  * @param  id        internal instance entry ID
- * @param  dbconnptr connection string
+ * @param  dbconnptr connection pointer
  * @return errno value
  */
 int _syslibEntryAlterDBConnPtr(int id, void *dbconnptr)
@@ -949,7 +973,7 @@ int _syslibEntryAlterDBConnPtr(int id, void *dbconnptr)
  * Alter database connection pointer for thread ID
  *
  * @param  tid       thread ID
- * @param  dbconnptr connection string
+ * @param  dbconnptr connection pointer
  * @return errno value
  */
 int _syslibEntryAlterDBConnPtrTID(long tid, void *dbconnptr)
@@ -1228,6 +1252,7 @@ cleanup:
  */
 void _syslibSetDBConnPtr(PGconn *ptr)
 {
+	DPRINTF("%s: Updating pointer for TID %d to %p\n", __FUNCTION__, _gettid(), ptr);
 	DPRINTF_CS("%s: About to enter critical section [TID #%d]\n", __FUNCTION__, _gettid());
 	_syslibCriticalSectionEnter();
 
@@ -3074,6 +3099,10 @@ void syslibFree(void)
 
 	DPRINTF("%s: Cleanup done\n", __FUNCTION__);
 
+	if (nInstances == 0) {
+		_syslibFree(instances);
+	}
+
 	logWrite(LOG_LEVEL_DEBUG, "%s: Connection freed for TID #%d\n", __FUNCTION__, _gettid());
 }
 
@@ -3777,6 +3806,7 @@ int syslibSSHUserStateIPSet(char *user, char *ip, int state)
 	else
 		snprintf(tmp, sizeof(tmp), "UPDATE ssh_user_permissions_ip SET valid = %d, ip = '%s' WHERE user = '%s'",
 			state, ip, user);
+	free(rets);
 
 	ret = syslibSQLiteQuery((gSSHUserStateFile != NULL) ? gSSHUserStateFile : SSH_STATE_FILE_USER, tmp, 0644);
 
@@ -3806,8 +3836,11 @@ int syslibSSHUserStateIPGet(char *user, char *ip)
 	if (syslibIsIPInSubnet(ip, rip) == 1) {
 		if (ret != NULL)
 			rv = atoi(ret);
-		free(ret);
+		free(ret); ret = NULL;
 	}
+
+	free(ret);
+	free(rip);
 
 	setuid(uid);
 
@@ -4099,6 +4132,7 @@ void syslibSQLiteFree(void)
 		if (_sqliteLib != NULL)
 			dlclose(_sqliteLib);
 	_hasSQLite = 0;
+	free(gSSHUserStateFile);
 }
 
 /*
@@ -4155,6 +4189,7 @@ void syslibPQFree(void)
 	if (_hasPQLib == 1)
 		if (_libpq != NULL)
 			dlclose(_libpq);
+
 	_hasPQLib = 0;
 }
 
@@ -4212,7 +4247,10 @@ int main()
 	}
 
 	printf("IP address 192.168.122.1 is %u\n", syslibIPToInt("192.168.122.1"));
-	printf("IP address decimal %u is %s\n", 3232266753, syslibIntToIP(3232266753));
+
+	char *ip = syslibIntToIP(3232266753);
+	printf("IP address decimal %u is %s\n", 3232266753, ip);
+	free(ip);
 
 	printf("IP address 192.168.1.123 is in the 192.168.1.0/24 subnet: %d\n",
 		syslibIsIPInSubnet("192.168.1.123", "192.168.1.0/24"));
@@ -4262,6 +4300,7 @@ int main()
 		syslibSQLiteQuery("/tmp/test-sqlite.db", "INSERT INTO test(id, val) VALUES(3, 4294967296)", 0644);
 		ret = syslibSQLiteSelect("/tmp/test-sqlite.db", "SELECT val FROM test WHERE id = 3", 0, NULL);
 		printf("Select query returned: %s [/tmp/test-sqlite.db]\n", ret);
+		free(ret); ret = NULL;
 
 		printf("... done\n");
 	}

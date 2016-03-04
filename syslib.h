@@ -256,6 +256,7 @@ int commandNetwork(char *str);
 // database.c
 char *pqSelect(char *query, char *field);
 tQueryResult pqSelectAdvanced(char *query, int numFields, char **fields);
+void freeQueryResult(tQueryResult r);
 int pqExecute(char *query);
 
 // config.c

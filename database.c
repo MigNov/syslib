@@ -23,7 +23,6 @@ void PQdebugNoticeProcessor(void *arg, const char *message)
 
 int pqConnect(char *connstr, PGconn *conn)
 {
-	//char	connstr[4096] = { 0 };
 	int	ret = -1;
 
 	if (_hasPQLib != 1)
@@ -90,14 +89,16 @@ void pqCleanup(void)
 		return;
 
 	PGconn *pgconn = NULL;
-
 	DPRINTF("%s: Finishing connection pointer to PgSQL [TID #%d]\n",
 		__FUNCTION__, _gettid() );
 	pgconn = _syslibGetDBConnPtr();
-	// TODO: Fix!
-	dPQfinish(pgconn);
+	if (pgconn != NULL) {
+		if (dPQfinish != NULL)
+			dPQfinish(pgconn);
+	}
+
 	pgconn = NULL;
-	//_syslibSetDBConnPtr(pgconn);
+	_syslibSetDBConnPtr(pgconn);
 }
 
 char *pqSelect(char *query, char *field)
@@ -334,6 +335,27 @@ end:
 	return retv;
 }
 
+void freeQueryResult(tQueryResult r)
+{
+	int i, j, k;
+
+	for (i = 0; i < r.nRows; i++) {
+		for (j = 0; j < r.rows[i].nFields; j++) {
+			for (k = 0; k < r.rows[i].fields[j].nParsedVals; k++)
+				free(r.rows[i].fields[j].parsedVals[k]);
+			free(r.rows[i].fields[j].name);
+			free(r.rows[i].fields[j].val);
+			free(r.rows[i].fields[j].parsedVals);
+
+			r.rows[i].fields[j].nParsedVals = 0;
+		}
+		r.rows[i].nFields = 0;
+		free(r.rows[i].fields);
+	}
+	free(r.rows);
+	r.nRows = 0;
+}
+
 int pqExecute(char *query)
 {
         char            *ret = NULL;
@@ -371,6 +393,7 @@ int pqExecute(char *query)
 	gettimeofday(&tv1, NULL);
         res = dPQexec(conn, query);
         if ((dPQresultStatus(res) != PGRES_COMMAND_OK) && (dPQresultStatus(res) != PGRES_TUPLES_OK)){
+		dPQclear(res);
                 DPRINTF("%s: Query failed (%s)\n", __FUNCTION__,
                         PQerrorMessage(conn));
 		libLogToFile(LOG_ERROR, "%s: Query failed (%s)\n", __FUNCTION__,

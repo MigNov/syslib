@@ -13,7 +13,25 @@ all: lib-compile lib-test
 
 test: compile runtest
 
+testvg: compile runtestvg
+
 static-lib: static-lib-compile static-lib-install
+
+help:
+	@echo "Compilation options"
+	@echo "==================="
+	@echo
+	@echo "make all        - compile the shared library"
+	@echo "make test       - compile test binary instead of library"
+	@echo "make testvg     - compile test binary and run valgrind"
+	@echo "make testbug    - test whether bug in dl library is present"
+	@echo "make static-lib - compile a static library"
+	@echo
+
+testbug:
+	@if ! valgrind -h > /dev/null 2>&1; then echo "Valgrind not found in path"; exit 1; fi
+	@$(CC) -Wl,--no-as-needed -g -o test-dlopen-bug test-dlopen-bug.c -ldl -lpthread
+	@if [ "$(shell valgrind --leak-check=full --show-reachable=yes ./test-dlopen-bug 2>&1 | grep "still reachable" | wc -l)" != "0" ]; then echo "Bug in dlopen() present"; else echo "Bug in dlopen() not present"; fi
 
 verrev:
 	@echo "#ifndef VERSION_REV" > version_rev.h
@@ -26,6 +44,14 @@ compile: verrev
 
 runtest:
 	./$(BINARY)
+
+runtestvg:
+	@if ! valgrind -h > /dev/null 2>&1; then echo "Valgrind not found in path"; exit 1; fi
+	@valgrind --leak-check=full --show-reachable=yes ./$(BINARY) 2> /tmp/vgsl
+	@less /tmp/vgsl
+	@echo "=================================="
+	@echo "Valgrind output saved to /tmp/vgsl"
+	@echo "=================================="
 
 lib-compile: verrev
 	$(CC) -c -fpic $(OBJECTS) $(DB_PGSQL) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm
