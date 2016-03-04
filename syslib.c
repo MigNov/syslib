@@ -3099,10 +3099,6 @@ void syslibFree(void)
 
 	DPRINTF("%s: Cleanup done\n", __FUNCTION__);
 
-	if (nInstances == 0) {
-		_syslibFree(instances);
-	}
-
 	logWrite(LOG_LEVEL_DEBUG, "%s: Connection freed for TID #%d\n", __FUNCTION__, _gettid());
 }
 
