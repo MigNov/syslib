@@ -2,8 +2,8 @@ CC=gcc
 DEBUG=-g
 ARGS=--no-wait
 PTH=`pwd`
-#DB_PGSQL=-lpq -DUSE_PGSQL
 DB_PGSQL=-DUSE_PGSQL
+DB_MARIA=-DUSE_MARIADB
 BINARY=syslib
 LIBRARY=libsyslib.so
 INCLUDE=-I`pg_config --includedir`
@@ -39,7 +39,7 @@ verrev:
 	@echo "#endif" >> version_rev.h
 
 compile: verrev
-	$(CC) -o $(BINARY) $(OBJECTS) $(DB_PGSQL) $(INCLUDE) $(DEBUG) -ldl -lcrypto -lm -DHAS_TEST_MAIN
+	$(CC) -o $(BINARY) $(OBJECTS) $(DB_PGSQL) $(DB_MARIA) $(INCLUDE) $(DEBUG) -ldl -lcrypto -lm -DHAS_TEST_MAIN
 	rm -f *.gch
 
 runtest:
@@ -54,14 +54,14 @@ runtestvg:
 	@echo "=================================="
 
 lib-compile: verrev
-	$(CC) -c -fpic $(OBJECTS) $(DB_PGSQL) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm
+	$(CC) -c -fpic $(OBJECTS) $(DB_PGSQL) $(DB_MARIA) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm
 	$(CC) -shared -o $(LIBRARY) *.o
 	$(CC) -L$(PTH) $(DEBUG) -fpic -o example/example example/example.c -l$(BINARY) $(DB_PGSQL) $(INCLUDE) -lcrypto -pthread -lm
 	$(CC) -L$(PTH) $(DEBUG) -fpic -o example/examplep example/examplep.c -l$(BINARY) $(DB_PGSQL) $(INCLUDE) -lcrypto -pthread -lm
 	rm -f *.gch
 
 static-lib-compile: verrev
-	$(CC) -Wall -c $(OBJECTS) $(DB_PGSQL) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm
+	$(CC) -Wall -c $(OBJECTS) $(DB_PGSQL) $(DB_MARIA) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm
 	ar -cvq libsyslib.a utils.o syslib.o database.o aesCryptor.o
 
 static-lib-install:

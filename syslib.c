@@ -2982,6 +2982,46 @@ int syslibInit(char *key, char *appname)
 	dPQclear = NULL;
 	dPQstatus = NULL;
 
+	_libmaria = NULL;
+	#ifdef USE_MARIADB
+	dMySQL_init = NULL;
+	dMySQL_info = NULL;
+	dMySQL_affected_rows = NULL;
+	dMySQL_server_version = NULL;
+	dMySQL_real_query = NULL;
+	dMySQL_num_fields = NULL;
+	dMySQL_store_result = NULL;
+	dMySQL_free_result = NULL;
+	dMySQL_real_connect = NULL;
+	dMySQL_real_escape_string = NULL;
+	dMySQL_fetch_row = NULL;
+	dMySQL_select_db = NULL;
+	dMySQL_fetch_lengths = NULL;
+	dMySQL_thread_safe = NULL;
+	dMySQL_stat = NULL;
+	dMySQL_ping = NULL;
+	dMySQL_close = NULL;
+	#endif
+
+	/*
+		MYSQL_ROW row;
+		unsigned int num_fields;
+		unsigned int i;
+
+		num_fields = mysql_num_fields(result);
+		while ((row = mysql_fetch_row(result)))
+		{
+			unsigned long *lengths;
+			lengths = mysql_fetch_lengths(result);
+			for(i = 0; i < num_fields; i++)
+			{
+				printf("[%.*s] ", (int) lengths[i],
+				row[i] ? row[i] : "NULL");
+			}
+			printf("\n");
+		}
+	*/
+
 	DPRINTF("Initializing syslib version %s (TID #%d)\n",
 		SYSLIB_VERSION, _gettid());
 
@@ -2989,6 +3029,7 @@ int syslibInit(char *key, char *appname)
 		SYSLIB_VERSION, _gettid());
 
 	_hasPQLib = (syslibPQInit() == 0) ? 1 : 0;
+	_hasMariaLib = (syslibMariaInit() == 0) ? 1 : 0;
 	_hasSQLite = (syslibSQLiteInit() == 0) ? 1 : 0;
 
 	gInitDone = _syslibGetInitDone();
@@ -3088,6 +3129,7 @@ void syslibFree(void)
 	}
 
 	syslibSQLiteFree();
+	syslibMariaFree();
 	syslibPQFree();
 
 	snprintf(tmp, sizeof(tmp), "/tmp/test.tmpd.%d", _gettid());
@@ -4204,6 +4246,69 @@ void syslibPQSetMessageProcessor(PQnoticeProcessor func)
         gSMP_pq = func;
 }
 
+/*
+ * Initialize MariaDB functions
+ *
+ * @return errno value
+ */
+int syslibMariaInit(void)
+{
+	_libmaria = dlopen("libmysqlclient.so", RTLD_LAZY);
+	if (_libmaria == NULL)
+		return -ENOENT;
+	dMySQL_init = dlsym(_libmaria, "mysql_init");
+	dMySQL_info = dlsym(_libmaria, "mysql_info");
+	dMySQL_server_version = dlsym(_libmaria, "mysql_get_server_version");
+	dMySQL_affected_rows = dlsym(_libmaria, "mysql_affected_rows");
+	dMySQL_real_query = dlsym(_libmaria, "mysql_real_query");
+	dMySQL_num_fields = dlsym(_libmaria, "mysql_num_fields");
+	dMySQL_store_result = dlsym(_libmaria, "mysql_store_result");
+	dMySQL_free_result = dlsym(_libmaria, "mysql_free_result");
+	dMySQL_ping = dlsym(_libmaria, "mysql_ping");
+	dMySQL_real_connect = dlsym(_libmaria, "mysql_real_connect");
+	dMySQL_real_escape_string = dlsym(_libmaria, "mysql_real_escape_string");
+	dMySQL_fetch_row = dlsym(_libmaria, "mysql_fetch_row");
+	dMySQL_select_db = dlsym(_libmaria, "mysql_select_db");
+	dMySQL_stat = dlsym(_libmaria, "mysql_stat");
+	dMySQL_thread_safe = dlsym(_libmaria, "mysql_thread_safe");
+	dMySQL_fetch_lengths = dlsym(_libmaria, "mysql_fetch_lengths");
+	dMySQL_close = dlsym(_libmaria, "mysql_close");
+
+	if ((dMySQL_init == NULL) || (dMySQL_info == NULL) || (dMySQL_server_version == NULL) || (dMySQL_affected_rows == NULL)
+		|| (dMySQL_real_query == NULL) || (dMySQL_num_fields == NULL) || (dMySQL_store_result == NULL) || (dMySQL_free_result == NULL)
+		|| (dMySQL_ping == NULL) || (dMySQL_real_connect == NULL) || (dMySQL_real_escape_string == NULL) || (dMySQL_fetch_row == NULL)
+		|| (dMySQL_select_db == NULL) || (dMySQL_stat == NULL) || (dMySQL_thread_safe == NULL) || (dMySQL_fetch_lengths == NULL)
+		|| (dMySQL_close == NULL)) {
+		dlerror();
+		dlclose(_libmaria);
+		return -ENOENT;
+	}
+
+	return 0;
+}
+
+/*
+ * Free MariaDB functions
+ */
+void syslibMariaFree(void)
+{
+	if (_hasMariaLib == 1)
+		if (_libmaria != NULL)
+			dlclose(_libmaria);
+
+	_hasMariaLib = 0;
+}
+
+/*
+ * Get information whether there's MariaDB present on the system
+ *
+ * @return boolean
+ */
+int syslibHasMariaLib(void)
+{
+	return _hasPQLib;
+}
+
 #ifdef HAS_TEST_MAIN
 /**
  * SQLite message processor
@@ -4319,6 +4424,15 @@ int main()
 	}
 	else
 		printf("Cannot find libpq on the system\n");
+
+	if (syslibHasMariaLib() == 1) {
+		printf("MariaDB found on the system\n");
+		printf("Ready to run tests ...\n");
+
+		printf("Tests done\n");
+	}
+	else
+		printf("Cannot find MariaDB on the system\n");
 
 	syslibFree();
 	return 0;

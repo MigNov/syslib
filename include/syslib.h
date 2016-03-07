@@ -142,6 +142,7 @@ extern void   syslibDebugDump(void);
 extern char * syslibSystemUUID(void);
 extern int    syslibEnsureUUIDFile(void);
 extern char * syslibGetShortHostName(void);
+extern char * syslibGetRevision(void);
 extern unsigned int syslibConvertTimestampToUnix(char *ts);
 extern char * syslibQueryGetSingle(char *table, char *field, char *sensor, char *conditionAppend, char *def);
 extern char **syslibQueryGetArray(char *table, char *field, int *out, char *sensor, char *conditionAppend);
@@ -221,6 +222,10 @@ extern int    syslibPQInit(void);
 extern int    syslibHasPQLib(void);
 extern void   syslibPQSetMessageProcessor(tPQMessageProcesorFunc func);
 extern void   syslibPQFree(void);
+
+extern int    syslibMariaInit(void);
+extern int    syslibHasMariaLib(void);
+extern void   syslibMariaFree(void);
 
 extern void   syslibFree(void);
 

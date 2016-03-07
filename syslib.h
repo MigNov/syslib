@@ -198,6 +198,48 @@ tPQnfieldsFunc dPQnfields;
 tPQgetvalueFunc dPQgetvalue;
 tPQclearFunc dPQclear;
 
+/* MySQL/MariaDB functions */
+#ifdef USE_MARIADB
+#include <mysql/mysql.h>
+
+typedef MYSQL * (*tMySQLInitFunc)(MYSQL * mysql);
+typedef const char * (*tMySQLInfoFunc)(MYSQL * mysql);
+typedef unsigned long (*tMySQLSerVerFunc)(MYSQL * mysql);
+typedef void (*tMySQLClose) (MYSQL * mysql);
+typedef my_ulonglong (*tMySQLAffectedRows)(MYSQL * mysql);
+typedef int (*tMySQLRealQuery)(MYSQL * mysql, const char * q, unsigned long);
+typedef unsigned int (*tMySQLNumFields)(MYSQL_RES * );
+typedef MYSQL_RES * (*tMySQLStoreResult)(MYSQL * mysql);
+typedef void (*tMySQLFreeResult)(MYSQL_RES * result);
+typedef int (*tMySQLPing)(MYSQL * mysql);
+typedef MYSQL * (*tMySQLRealConnect)(MYSQL * mysql, const char * host, const char * user, const char * passwd, const char * db,
+		unsigned int port, const char * unix_socket, unsigned long flags);
+typedef unsigned long (*tMySQLRealEscapeString)(MYSQL * mysql, char * to, const char * from, unsigned long);
+typedef int (*tMySQLSelectDB)(MYSQL * mysql, const char * db);
+typedef const char * (*tMySQLStat)(MYSQL * mysql);
+typedef MYSQL_ROW (*tMySQLFetchRow)(MYSQL_RES * result);
+typedef unsigned long * (*tMySQLFetchLengths)(MYSQL_RES * result);
+typedef unsigned int (*tMySQLThreadSafe)(void );
+
+tMySQLInitFunc dMySQL_init;
+tMySQLInfoFunc dMySQL_info;
+tMySQLSerVerFunc dMySQL_server_version;
+tMySQLAffectedRows dMySQL_affected_rows;
+tMySQLRealQuery dMySQL_real_query;
+tMySQLNumFields dMySQL_num_fields;
+tMySQLStoreResult dMySQL_store_result;
+tMySQLFreeResult  dMySQL_free_result;
+tMySQLPing     dMySQL_ping;
+tMySQLRealConnect dMySQL_real_connect;
+tMySQLRealEscapeString dMySQL_real_escape_string;
+tMySQLFetchRow dMySQL_fetch_row;
+tMySQLSelectDB dMySQL_select_db;
+tMySQLStat     dMySQL_stat;
+tMySQLThreadSafe dMySQL_thread_safe;
+tMySQLFetchLengths dMySQL_fetch_lengths;
+tMySQLClose    dMySQL_close;
+#endif
+
 // MODIFY SYSLIB.C TO CHECK WHETHER IT IS NULL OR NOT TO PREVENT SIGSEGV! + insert MySQL too
 // Then create API like database{Select|Execute}(type, type_args, query); with type = DATABASE_MYSQL, DATABASE_PGSQL, DATABASE_SQLITE
 // with appropriate type_args - connection string like "type://hostname/database?user=user&password=password" (or "sqlite:///path/to/file")
@@ -208,9 +250,11 @@ tSQLiteMessageFunc gSMP;
 PQnoticeProcessor gSMP_pq;
 void *_sqliteLib;
 void *_libpq;
+void *_libmaria;
 
 int _hasSQLite;
 int _hasPQLib;
+int _hasMariaLib;
 
 /* Thread-safe handling */
 void _syslibSetDBConn(char *dbconn);
@@ -409,6 +453,10 @@ extern int    syslibPQInit(void);
 extern int    syslibHasPQLib(void);
 extern void   syslibPQSetMessageProcessor(PQnoticeProcessor func);
 extern void   syslibPQFree(void);
+
+extern int    syslibMariaInit(void);
+extern int    syslibHasMariaLib(void);
+extern void   syslibMariaFree(void);
 
 extern void   syslibFree(void);
 
