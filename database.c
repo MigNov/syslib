@@ -88,10 +88,19 @@ void pqCleanup(void)
 	if (_hasPQLib != 1)
 		return;
 
+	char *connstr = _syslibGetDBConn();
+	if (connstr == NULL)
+		return;
+
+	if (strncmp(connstr, "postgresql://", 13) != 0) {
+		free(connstr);
+		return;
+	}
+
 	PGconn *pgconn = NULL;
 	DPRINTF("%s: Finishing connection pointer to PgSQL [TID #%d]\n",
 		__FUNCTION__, _gettid() );
-	pgconn = _syslibGetDBConnPtr();
+	pgconn = (PGconn *)_syslibGetDBConnPtr();
 	if (pgconn != NULL) {
 		if (dPQfinish != NULL)
 			dPQfinish(pgconn);
@@ -112,7 +121,16 @@ char *pqSelect(char *query, char *field)
 	if (_hasPQLib != 1)
 		return NULL;
 
-	conn = _syslibGetDBConnPtr();
+	char *connstr = _syslibGetDBConn();
+	if (connstr == NULL)
+		return NULL;
+
+	if (strncmp(connstr, "postgresql://", 13) != 0) {
+		free(connstr);
+		return NULL;
+	}
+
+	conn = (PGconn *)_syslibGetDBConnPtr();
 	if (conn == NULL) {
 		DPRINTF("%s: Connection pointer is NULL, (re)connecting ... [TID #%d]\n",
 			__FUNCTION__, _gettid());
@@ -145,6 +163,12 @@ char *pqSelect(char *query, char *field)
                 ((tv2.tv_sec * 1000000) + tv2.tv_usec)) / 1000000.;
 
 	_syslibEnsureConnection();
+	if (dPQsetNoticeProcessor != NULL) {
+		if (gSMP_pq != NULL)
+			dPQsetNoticeProcessor(conn, gSMP_pq, NULL);
+		else
+			dPQsetNoticeProcessor(conn, PQdebugNoticeProcessor, NULL);
+	}
 	res = dPQexec(conn, query);
 	if (dPQresultStatus(res) != PGRES_TUPLES_OK) {
 		DPRINTF("%s: Query failed (%s) [TID #%d]\n", __FUNCTION__,
@@ -210,7 +234,7 @@ tQueryResult pqSelectAdvanced(char *query, int numFields, char **fields)
 	if (_hasPQLib != 1)
 		return retv;
 
-	conn = _syslibGetDBConnPtr();
+	conn = (PGconn *)_syslibGetDBConnPtr();
 	if (conn == NULL) {
 		DPRINTF("%s: Connection pointer is NULL, (re)connecting ... [TID #%d]\n",
 			__FUNCTION__, _gettid());
@@ -243,6 +267,12 @@ tQueryResult pqSelectAdvanced(char *query, int numFields, char **fields)
                 ((tv2.tv_sec * 1000000) + tv2.tv_usec)) / 1000000.;
 
 	_syslibEnsureConnection();
+	if (dPQsetNoticeProcessor != NULL) {
+		if (gSMP_pq != NULL)
+			dPQsetNoticeProcessor(conn, gSMP_pq, NULL);
+		else
+			dPQsetNoticeProcessor(conn, PQdebugNoticeProcessor, NULL);
+	}
 	res = dPQexec(conn, query);
 	if (dPQresultStatus(res) != PGRES_TUPLES_OK) {
 		DPRINTF("%s: Query failed (%s) [TID #%d]\n", __FUNCTION__,
@@ -367,7 +397,7 @@ int pqExecute(char *query)
 	if (_hasPQLib != 1)
 		return -1;
 
-	conn = _syslibGetDBConnPtr();
+	conn = (PGconn *)_syslibGetDBConnPtr();
         if (conn == NULL) {
 		DPRINTF("%s: Connection pointer is NULL, (re)connecting ...\n", __FUNCTION__);
 
@@ -391,6 +421,12 @@ int pqExecute(char *query)
 	libLogToFile(LOG_SQL, "%s: Query is '%s'\n", __FUNCTION__, query);
 
 	gettimeofday(&tv1, NULL);
+	if (dPQsetNoticeProcessor != NULL) {
+		if (gSMP_pq != NULL)
+			dPQsetNoticeProcessor(conn, gSMP_pq, NULL);
+		else
+			dPQsetNoticeProcessor(conn, PQdebugNoticeProcessor, NULL);
+	}
         res = dPQexec(conn, query);
         if ((dPQresultStatus(res) != PGRES_COMMAND_OK) && (dPQresultStatus(res) != PGRES_TUPLES_OK)){
 		dPQclear(res);

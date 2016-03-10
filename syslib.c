@@ -254,6 +254,48 @@ void _syslibFree(void *ptr)
 		free(ptr);
 }
 
+/*
+ * Internal function to get parameter from connection string
+ *
+ * @param str connection string
+ * @param param parameter to get, can be NULL to connection string without parameters
+ * @return parameter value or NULL if not found
+ */
+char *_syslibGetParam(char *str, char *param)
+{
+	char *ret = NULL;
+	char *tmp = NULL;
+
+	if (str == NULL)
+		return NULL;
+
+	tmp = strdup(str);
+
+	tTokenizer t = tokenize(tmp, "?");
+	if (param == NULL)
+		ret = strdup(t.tokens[0]);
+	else {
+		if (t.numTokens == 2) {
+			int i;
+			tTokenizer t2 = tokenize(t.tokens[1], "&");
+			for (i = 0; i < t2.numTokens; i++) {
+				tTokenizer t3 = tokenize(t2.tokens[i], "=");
+				if (t3.numTokens == 2) {
+					if (strcmp(t3.tokens[0], param) == 0) {
+						ret = t3.tokens[1];
+						break;
+					}
+				}
+				tokensFree(t3);
+			}
+			tokensFree(t2);
+		}
+	}
+	tokensFree(t);
+	free(tmp);
+
+	return ret;
+}
 
 /**
  * Internal check for function zombie connections from pg_stat_activity table
@@ -1250,7 +1292,7 @@ cleanup:
  * @param  ptr   database connection pointer
  * @return None
  */
-void _syslibSetDBConnPtr(PGconn *ptr)
+void _syslibSetDBConnPtr(void *ptr)
 {
 	DPRINTF("%s: Updating pointer for TID %d to %p\n", __FUNCTION__, _gettid(), ptr);
 	DPRINTF_CS("%s: About to enter critical section [TID #%d]\n", __FUNCTION__, _gettid());
@@ -1284,9 +1326,9 @@ void _syslibSetDBConnPtr(PGconn *ptr)
  *
  * @return database connection pointer or NULL for none
  */
-PGconn *_syslibGetDBConnPtr(void)
+void *_syslibGetDBConnPtr(void)
 {
-	PGconn *ret = NULL;
+	void *ret = NULL;
 
 	DPRINTF_CS("%s: About to enter critical section [TID #%d]\n", __FUNCTION__, _gettid() );
 	_syslibCriticalSectionEnter();
@@ -1296,7 +1338,7 @@ PGconn *_syslibGetDBConnPtr(void)
 	if (id < 0)
 		goto cleanup;
 
-	ret = (PGconn *)instances[id].dbconnptr;
+	ret = (void *)instances[id].dbconnptr;
 cleanup:
 	DPRINTF_CS("%s: About to leave critical section [TID #%d]\n", __FUNCTION__, _gettid() );
 	_syslibCriticalSectionLeave();
@@ -2415,32 +2457,23 @@ int syslibQueryResultFree(tQueryResult res)
 	return 0;
 }
 
-int syslibQueryExecute(char *query, char *connstr)
+/*
+ * Execute query upon existing DB connection
+ *
+ * @param query query to run
+ * @return errno value
+ */
+int syslibQueryExecute(char *query)
 {
-	if (connstr != NULL) {
-		if (strncmp(connstr, "postgresql://", 13) == 0) {
-			if (_hasPQLib == 0) {
-				if (syslibPQInit() != 0)
-					return -ENOTSUP;
-			}
+	int id = syslibDBGetTypeID();
 
-			printf("GID: %d\n", _syslibGetInitDone());
-			if (_syslibGetInitDone() == 0) {
-				printf("Connecting to %s\n", connstr);
-				if (pqConnect(connstr, NULL) != 0) {
-					pqCleanup();
-					libLogToFile(LOG_ERROR, "%s: Connection to database failed\n", __FUNCTION__);
-					return -EINVAL;
-				}
-			}
-
-			return pqExecute(query);
-		}
-
-		return 0;
-	}
-
-	return pqExecute(query);
+	if (id == DB_TYPE_MYSQL)
+		return _syslibMariaDBQuery(query);
+	else
+	if (id == DB_TYPE_PGSQL)
+		return pqExecute(query);
+	else
+		return -ENOTSUP;
 }
 
 /**
@@ -2967,6 +3000,7 @@ int syslibInit(char *key, char *appname)
 	sqlite_finalize = NULL;
 
 	_libpq = NULL;
+	#ifdef USE_PGSQL
 	dPQsetNoticeProcessor = NULL;
 	dPQstatus = NULL;
 	dPQresultStatus = NULL;
@@ -2981,10 +3015,12 @@ int syslibInit(char *key, char *appname)
 	dPQgetvalue = NULL;
 	dPQclear = NULL;
 	dPQstatus = NULL;
+	#endif
 
 	_libmaria = NULL;
 	#ifdef USE_MARIADB
 	dMySQL_init = NULL;
+	dMySQL_error = NULL;
 	dMySQL_info = NULL;
 	dMySQL_affected_rows = NULL;
 	dMySQL_server_version = NULL;
@@ -3002,25 +3038,6 @@ int syslibInit(char *key, char *appname)
 	dMySQL_ping = NULL;
 	dMySQL_close = NULL;
 	#endif
-
-	/*
-		MYSQL_ROW row;
-		unsigned int num_fields;
-		unsigned int i;
-
-		num_fields = mysql_num_fields(result);
-		while ((row = mysql_fetch_row(result)))
-		{
-			unsigned long *lengths;
-			lengths = mysql_fetch_lengths(result);
-			for(i = 0; i < num_fields; i++)
-			{
-				printf("[%.*s] ", (int) lengths[i],
-				row[i] ? row[i] : "NULL");
-			}
-			printf("\n");
-		}
-	*/
 
 	DPRINTF("Initializing syslib version %s (TID #%d)\n",
 		SYSLIB_VERSION, _gettid());
@@ -3041,19 +3058,47 @@ int syslibInit(char *key, char *appname)
 		return 0;
 	}
 
-	if ((ret = _optionsSetData(key, appname)) != 0) {
-		#ifdef ALLOW_OUTPUT
-		logWrite(LOG_LEVEL_ERROR, "%s: Initialization failed with error code %d\n",
-			__FUNCTION__, ret);
-		#endif
-		DPRINTF("%s: Initialization failed\n", __FUNCTION__);
+	if (strncmp(key, "sqlite://", 9) == 0) {
+		_syslibSetDBConn(key);
 	}
-	else {
-		/* Set flag initialization was already done for future use */
-		gInitDone = 1;
-		_syslibSetInitDone(gInitDone);
-		logWrite(LOG_LEVEL_DEBUG, "%s: Initialization done\n", __FUNCTION__);
-		DPRINTF("%s: Initialization done\n", __FUNCTION__);
+	else
+	if (strncmp(key, "postgresql://", 13) == 0) {
+		if ((ret = _optionsSetData(key, appname)) != 0) {
+			#ifdef ALLOW_OUTPUT
+			logWrite(LOG_LEVEL_ERROR, "%s: Initialization failed with error code %d\n",
+				__FUNCTION__, ret);
+			#endif
+			DPRINTF("%s: Initialization failed\n", __FUNCTION__);
+		}
+		else {
+			/* Set flag initialization was already done for future use */
+			gInitDone = 1;
+			_syslibSetInitDone(gInitDone);
+			logWrite(LOG_LEVEL_DEBUG, "%s: Initialization done\n", __FUNCTION__);
+			DPRINTF("%s: Initialization done\n", __FUNCTION__);
+		}
+	}
+	else
+	if ((strncmp(key, "mysql://", 8) == 0) || (strncmp(key, "mariadb://", 10) == 0)) {
+		if (_syslibGetDBConnPtr() == NULL) {
+			MYSQL *conn = _syslibMariaDBConnect(key);
+			if (conn != NULL) {
+				_syslibSetDBConn(key);
+				_syslibSetDBConnPtr((void *)conn);
+				gInitDone = 1;
+				_syslibSetInitDone(gInitDone);
+				logWrite(LOG_LEVEL_DEBUG, "%s: Initialization done\n", __FUNCTION__);
+				DPRINTF("%s: Initialization done\n", __FUNCTION__);
+			}
+			else
+				DPRINTF("%s: Initialization failed\n", __FUNCTION__);
+		}
+		else {
+			gInitDone = 1;
+			_syslibSetInitDone(gInitDone);
+			logWrite(LOG_LEVEL_DEBUG, "%s: Initialization done\n", __FUNCTION__);
+			DPRINTF("%s: Initialization done\n", __FUNCTION__);
+		}
 	}
 
 	return (gInitDone) ? 0 : ret;
@@ -3097,6 +3142,28 @@ cleanup:
 	return ret;
 }
 
+void mdCleanup(void)
+{
+	char *tmp = _syslibGetDBConn();
+	if (tmp == NULL)
+		return;
+
+	if ((strncmp(tmp, "mysql://", 8) != 0) && (strncmp(tmp, "mariadb://", 10) != 0))
+		return;
+
+	free(tmp);
+
+	MYSQL *ptr = _syslibGetDBConnPtr();
+	if (ptr == NULL)
+		return;
+
+	dMySQL_close((MYSQL *)ptr);
+	ptr = NULL;
+
+	_syslibSetDBConnPtr(ptr);
+	DPRINTF("MySQL/MariaDB connection pointer closed\n");
+}
+
 /**
  * Free library if not required anymore
  *
@@ -3117,6 +3184,8 @@ void syslibFree(void)
 	_syslibHandleZombies();
 
 	pqCleanup();
+	mdCleanup();
+
 	//_syslibSetDBConn(NULL);
 	//_syslibEntryAlterInitDone( id, 0 );
 	_syslibEntryDealloc( _gettid() );
@@ -4040,6 +4109,57 @@ int syslibUserLoginMessageHandlerUnset(void)
 }
 
 /*
+ * Get database type identificator
+ *
+ * @return get database type id
+ */
+int syslibDBGetTypeID(void)
+{
+	int ret = DB_TYPE_NONE;
+	char *connstr = _syslibGetDBConn();
+	if (connstr == NULL)
+		return ret;
+
+	if (strncmp(connstr, "sqlite://", 9) == 0)
+		ret = DB_TYPE_SQLITE;
+	else
+	if ((strncmp(connstr, "mysql://", 8) == 0) || (strncmp(connstr, "mariadb://", 10) == 0))
+		ret = DB_TYPE_MYSQL;
+	else
+	if (strncmp(connstr, "postgresql://", 13) == 0)
+		ret = DB_TYPE_PGSQL;
+
+	free(connstr);
+
+	return ret;
+}
+
+/*
+ * Get database type string
+ *
+ * @return get database type string
+ */
+char *syslibDBGetType(void)
+{
+	char *ret = NULL;
+	int id = syslibDBGetTypeID();
+
+	if (id == DB_TYPE_NONE)
+		return NULL;
+	else
+	if (id == DB_TYPE_SQLITE)
+		ret = strdup("SQLite");
+	else
+	if (id == DB_TYPE_MYSQL)
+		ret = strdup("MySQL/MariaDB");
+	else
+	if (id == DB_TYPE_PGSQL)
+		ret = strdup("PgSQL");
+
+	return ret;
+}
+
+/*
  * SQLite query functions
  *
  * @param filename file name of SQLite database file
@@ -4129,6 +4249,7 @@ char *syslibSQLiteSelect(char *filename, char *query, int idx, char *def)
  */
 void syslibSQLiteSetMessageProcessor(tSQLiteMessageFunc func)
 {
+	DPRINTF("%s: Setting up message processor for SQLite database\n", __FUNCTION__);
 	gSMP = func;
 }
 
@@ -4162,6 +4283,26 @@ int syslibSQLiteInit(void)
 }
 
 /*
+ * SQLite pointer dump
+ */
+void _syslibSQLiteDump(void)
+{
+	printf("-------------------\n");
+	printf("SQLite pointer dump\n");
+	printf("-------------------\n\n");
+	printf("SQLite lib: %p\n", _sqliteLib);
+	printf("sqlite3_open: %p\n", sqlite_open);
+	printf("sqlite3_exec: %p\n", sqlite_exec);
+	printf("sqlite3_free: %p\n", sqlite_vfree);
+	printf("sqlite3_close: %p\n", sqlite_close);
+	printf("sqlite3_step: %p\n", sqlite_step);
+	printf("sqlite3_prepare_v2: %p\n", sqlite_prepare);
+	printf("sqlite3_column_text: %p\n", sqlite_column_text);
+	printf("sqlite3_finalize: %p\n\n", sqlite_finalize);
+
+}
+
+/*
  * Free SQLite functions
  */
 void syslibSQLiteFree(void)
@@ -4181,6 +4322,160 @@ void syslibSQLiteFree(void)
 int syslibHasSQLite(void)
 {
 	return _hasSQLite;
+}
+
+/*
+ * Internal function to connect to MySQL/MariaDB
+ *
+ * @param connstr connection string like "mysql://localhost:{$portNumber,$unixSocket}/db?user=$userName&password=$password"
+ * @return MYSQL pointer or NULL
+ */
+MYSQL *_syslibMariaDBConnect(char *connstr)
+{
+	MYSQL *mysql = NULL;
+	char *dbname = NULL;
+	char *server = NULL;
+	char *user   = NULL;
+	char *password=NULL;
+	char *socket  = NULL;
+	int  port     = 0;
+
+	if (connstr == NULL)
+		return NULL;
+
+	if ((strncmp(connstr, "mysql://", 8) != 0) && (strncmp(connstr, "mariadb://", 10) != 0)) {
+		DPRINTF("%s: Invalid connection string\n", __FUNCTION__);
+		return NULL;
+	}
+
+	if (_hasMariaLib != 1) {
+		if (syslibMariaInit() != 0)
+			return NULL;
+	}
+
+	tTokenizer t = tokenize(connstr + 8, "/");
+	if (t.numTokens < 2) {
+		tokensFree(t);
+		return NULL;
+	}
+
+	char *tmpX = strdup(t.tokens[1]);
+	tTokenizer t2 = tokenize(tmpX, "?");
+	dbname = strdup(t2.tokens[0]);
+	tokensFree(t2);
+	free(tmpX);
+
+	server = strdup(t.tokens[0]);
+	tokensFree(t);
+
+	t = tokenize(server, ":");
+	if (t.numTokens == 2) {
+		free(server);
+		server = strdup(t.tokens[0]);
+		if (strncmp(t.tokens[1], "/", 1) == 0)
+			socket = strdup(t.tokens[1]);
+		else
+			port = atoi(t.tokens[1]);
+	}
+	tokensFree(t);
+
+	user = _syslibGetParam(connstr, "user");
+	password = _syslibGetParam(connstr, "password");
+
+	DPRINTF("%s: Server '%s', user '%s', password '%s', dbname '%s', port %d, socket '%s'\n",
+		__FUNCTION__, server, user, password, dbname, port, socket);
+
+	mysql = dMySQL_init(NULL);
+	if (mysql != NULL) {
+		if (dMySQL_real_connect(mysql, server, user, password, dbname, port, socket, 0) == NULL) {
+			dMySQL_close(mysql);
+			mysql = NULL;
+		}
+	}
+
+	free(server);
+	free(user);
+	free(password);
+	free(dbname);
+	free(socket);
+
+	return mysql;
+}
+
+/*
+ * MariaDB query functions
+ *
+ * @param query query to run upon the database
+ * @return errno value
+ */
+int _syslibMariaDBQuery(char *query)
+{
+	MYSQL *mysql = _syslibGetDBConnPtr();
+
+	if (mysql == NULL) {
+		char *tmp = _syslibGetDBConn();
+		DPRINTF("%s: Establishing connection to '%s'\n", __FUNCTION__, tmp);
+		mysql = (MYSQL *)_syslibMariaDBConnect(tmp);
+		free(tmp);
+	}
+	else
+		DPRINTF("%s: Using established connection\n", __FUNCTION__);
+
+	if (mysql == NULL)
+		return -EINVAL;
+
+	DPRINTF("%s: Running query '%s'\n", __FUNCTION__, query);
+	int ret = dMySQL_real_query(mysql, query, strlen(query));
+	if (ret != 0) {
+		DPRINTF("%s: Query failed (%s)\n", __FUNCTION__, dMySQL_error(mysql));
+		return -EINVAL;
+	}
+
+	DPRINTF("%s: Query completed successfully\n", __FUNCTION__);
+	return ret;
+}
+
+/*
+ * MariaDB select function
+ *
+ * @param query query to run upon the database
+ * @param idx field index to read from the result
+ * @return return value
+ */
+char *_syslibMariaDBSelect(char *query, int idx)
+{
+	MYSQL *mysql = _syslibGetDBConnPtr();
+
+	if (mysql == NULL) {
+		char *tmp = _syslibGetDBConn();
+		mysql = (MYSQL *)_syslibMariaDBConnect(tmp);
+		free(tmp);
+	}
+
+	if (mysql == NULL)
+		return NULL;
+
+	int ret = dMySQL_real_query(mysql, query, strlen(query));
+	if (ret != 0)
+		return NULL;
+
+	MYSQL_RES *res = dMySQL_store_result(mysql);
+
+	MYSQL_ROW row;
+	unsigned int num_fields;
+	unsigned int i;
+
+	char *retx = NULL;
+	num_fields = dMySQL_num_fields(res);
+	if (idx < num_fields) {
+		if (row = dMySQL_fetch_row(res))
+			if (row[idx] != NULL)
+				retx = strdup(row[idx]);
+	}
+
+	dMySQL_free_result(res);
+
+	return retx;
 }
 
 /*
@@ -4220,6 +4515,31 @@ int syslibPQInit(void)
 }
 
 /*
+ * PostgreSQL pointer dump
+ */
+void _syslibPQDump(void)
+{
+	printf("-----------------------\n");
+	printf("PostgreSQL pointer dump\n");
+	printf("-----------------------\n\n");
+	printf("PostgreSQL lib: %p\n", _libpq);
+	printf("PQsetNoticeProcessor: %p\n", dPQsetNoticeProcessor);
+	printf("PQstatus: %p\n", dPQstatus);
+	printf("PQresultStatus: %p\n", dPQresultStatus);
+	printf("PQntuples: %p\n", dPQntuples);
+	printf("PQgetisnull: %p\n", dPQgetisnull);
+	printf("PQexec: %p\n", dPQexec);
+	printf("PQconnectdb: %p\n", dPQconnectdb);
+	printf("PQfname: %p\n", dPQfname);
+	printf("PQfinish: %p\n", dPQfinish);
+	printf("PQerrorMessage: %p\n", dPQerrorMessage);
+	printf("PQnfields: %p\n", dPQnfields);
+	printf("PQgetvalue: %p\n", dPQgetvalue);
+	printf("PQclear: %p\n", dPQclear);
+
+}
+
+/*
  * Free SQLite functions
  */
 void syslibPQFree(void)
@@ -4243,6 +4563,7 @@ int syslibHasPQLib(void)
 
 void syslibPQSetMessageProcessor(PQnoticeProcessor func)
 {
+	DPRINTF("%s: Setting up message processor for PgSQL database\n", __FUNCTION__);
         gSMP_pq = func;
 }
 
@@ -4257,6 +4578,7 @@ int syslibMariaInit(void)
 	if (_libmaria == NULL)
 		return -ENOENT;
 	dMySQL_init = dlsym(_libmaria, "mysql_init");
+	dMySQL_error = dlsym(_libmaria, "mysql_error");
 	dMySQL_info = dlsym(_libmaria, "mysql_info");
 	dMySQL_server_version = dlsym(_libmaria, "mysql_get_server_version");
 	dMySQL_affected_rows = dlsym(_libmaria, "mysql_affected_rows");
@@ -4278,13 +4600,42 @@ int syslibMariaInit(void)
 		|| (dMySQL_real_query == NULL) || (dMySQL_num_fields == NULL) || (dMySQL_store_result == NULL) || (dMySQL_free_result == NULL)
 		|| (dMySQL_ping == NULL) || (dMySQL_real_connect == NULL) || (dMySQL_real_escape_string == NULL) || (dMySQL_fetch_row == NULL)
 		|| (dMySQL_select_db == NULL) || (dMySQL_stat == NULL) || (dMySQL_thread_safe == NULL) || (dMySQL_fetch_lengths == NULL)
-		|| (dMySQL_close == NULL)) {
+		|| (dMySQL_close == NULL) || (dMySQL_error == NULL)) {
 		dlerror();
 		dlclose(_libmaria);
 		return -ENOENT;
 	}
 
 	return 0;
+}
+
+
+/*
+ * MariaDB pointer dump
+ */
+void _syslibMariaDump(void)
+{
+	printf("--------------------------\n");
+	printf("MySQL/MariaDB pointer dump\n");
+	printf("--------------------------\n\n");
+	printf("MySQL/MariaDB lib: %p\n", _libmaria);
+	printf("MySQL_init: %p\n", dMySQL_init);
+	printf("MySQL_info: %p\n", dMySQL_info);
+	printf("MySQL_server_version: %p\n", dMySQL_server_version);
+	printf("MySQL_affected_rows: %p\n", dMySQL_affected_rows);
+	printf("MySQL_real_query: %p\n", dMySQL_real_query);
+	printf("MySQL_num_fields: %p\n", dMySQL_num_fields);
+	printf("MySQL_store_result: %p\n", dMySQL_store_result);
+	printf("MySQL_free_result: %p\n", dMySQL_free_result);
+	printf("MySQL_ping: %p\n", dMySQL_ping);
+	printf("MySQL_real_connect: %p\n", dMySQL_real_connect);
+	printf("MySQL_real_escape_string: %p\n", dMySQL_real_escape_string);
+	printf("MySQL_fetch_row: %p\n", dMySQL_fetch_row);
+	printf("MySQL_select_db: %p\n", dMySQL_select_db);
+	printf("MySQL_stat: %p\n", dMySQL_stat);
+	printf("MySQL_thread_safe: %p\n", dMySQL_thread_safe);
+	printf("MySQL_fetch_lengths: %p\n", dMySQL_fetch_lengths);
+	printf("MySQL_close: %p\n", dMySQL_close);
 }
 
 /*
@@ -4299,6 +4650,35 @@ void syslibMariaFree(void)
 	_hasMariaLib = 0;
 }
 
+void syslibDBConnectorDump(void)
+{
+	printf("==========================\n\n");
+	_syslibSQLiteDump();
+	_syslibPQDump();
+	_syslibMariaDump();
+	printf("==========================\n\n");
+}
+
+char *syslibGetIdentification(void)
+{
+	char tmp[1024] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "Syslib library version %s (rev %s) [", SYSLIB_VERSION, VERSION_REV);
+	if (syslibHasSQLite() == 1)
+		strcat(tmp, "SQLite,");
+	if (syslibHasPQLib() == 1)
+		strcat(tmp, "PgSQL,");
+	if (syslibHasMariaLib() == 1)
+		strcat(tmp, "MySQL,");
+
+	if (tmp[strlen(tmp) - 1] == ',')
+		tmp[strlen(tmp) - 1] = ']';
+	else
+		tmp[strlen(tmp) - 1] = 0;
+
+	return strdup(tmp);
+}
+
 /*
  * Get information whether there's MariaDB present on the system
  *
@@ -4307,6 +4687,115 @@ void syslibMariaFree(void)
 int syslibHasMariaLib(void)
 {
 	return _hasPQLib;
+}
+
+/*
+ * General query functions
+ *
+ * @param query query to run upon the database
+ * @return errno value
+ */
+int syslibQuery(char *query)
+{
+	char *tmp = _syslibGetDBConn();
+	if (tmp == NULL)
+		return -ENOTSUP;
+
+	char *fn = NULL;
+	int perms = 0644;
+	if (strncmp(tmp, "sqlite://", 9) == 0) {
+		char *fn  = NULL;
+		char *ret = NULL;
+
+		ret = _syslibGetParam(tmp, "mode");
+		if (ret != NULL) {
+			char tmp[8] = { 0 };
+
+			perms = strtol(ret, NULL, 8);
+		}
+		free(ret);
+
+		fn = _syslibGetParam(tmp, NULL);
+
+		DPRINTF("%s: Accessing SQLite file '%s' (perms 0%o)\n", __FUNCTION__, fn + 9, perms);
+		return syslibSQLiteQuery(fn + 9, query, (int)perms);
+	}
+	else
+	if (strncmp(tmp, "postgresql://", 13) == 0) {
+		char *fn = _syslibGetParam(tmp, NULL);
+		DPRINTF("%s: Accessing PgSQL database identified by '%s'\n", __FUNCTION__, fn + 9);
+		free(fn);
+		return syslibQueryExecute(query);
+	}
+	else
+	if ((strncmp(tmp, "mysql://", 8) == 0) || (strncmp(tmp, "mariadb://", 10) == 0)) {
+		char *fn = _syslibGetParam(tmp, NULL);
+		DPRINTF("%s: Accessing MySQL/MariaDB database identified by '%s'\n", __FUNCTION__, fn + 9);
+		free(fn);
+		return syslibQueryExecute(query);
+	}
+	// Add MariaDB/MySQL
+
+	return 0;
+}
+
+/*
+ * General selection function
+ *
+ * @param query query to run upon the SQLite database file
+ * @param idx index of row to return
+ * @param def default value if not found
+ * @return return value
+ */
+char *syslibSelect(char *query, int idx, char *def)
+{
+	char *tmp = _syslibGetDBConn();
+
+	if (tmp == NULL)
+		return NULL;
+
+	if (strncmp(tmp, "sqlite://", 9) == 0) {
+		char *fn = NULL;
+		char *ret = NULL;
+
+		fn = _syslibGetParam(tmp, NULL);
+	
+		DPRINTF("%s: Selecting field #%d from SQLite file '%s' using query '%s'\n",
+			__FUNCTION__, idx, fn + 9, query);
+		ret = syslibSQLiteSelect(fn + 9, query, idx, def);
+		free(fn);
+		return ret;
+	}
+	else
+	if (strncmp(tmp, "postgresql://", 13) == 0) {
+		char val[8] = { 0 };
+		char *ret = NULL;
+
+		char *fn = _syslibGetParam(tmp, NULL);
+		DPRINTF("%s: Accessing PgSQL database identified by '%s'\n", __FUNCTION__, fn + 9);
+		free(fn);
+
+		snprintf(val, sizeof(val), "#%d", idx);
+		ret = pqSelect(query, val);
+
+		return (ret != NULL) ? ret : ((def != NULL) ? strdup(def) : NULL);
+	}
+	else
+	if ((strncmp(tmp, "mysql://", 8) == 0) || (strncmp(tmp, "mariadb://", 10) == 0)) {
+		char val[8] = { 0 };
+		char *ret = NULL;
+
+		char *fn = _syslibGetParam(tmp, NULL);
+		DPRINTF("%s: Accessing MySQL/MariaDB database identified by '%s'\n", __FUNCTION__, fn + 9);
+		free(fn);
+
+		ret = _syslibMariaDBSelect(query, idx);
+
+		return (ret != NULL) ? ret : ((def != NULL) ? strdup(def) : NULL);
+	}
+	// Add MariaDB/MySQL
+
+	return NULL;
 }
 
 #ifdef HAS_TEST_MAIN
@@ -4341,11 +4830,20 @@ void pq_message_processor(void *arg, const char *message)
  */
 int main()
 {
-	//if (syslibInit("postgresql://localhost:5432/test?user=test&password=test", NULL, (void *)pq_message_processor) != 0) {
-	if (syslibInit("postgresql://localhost:5432/test?user=test&password=test", NULL) != 0) {
+	if (syslibInit("sqlite:///tmp/test-sqlite.db?mode=0644", NULL) != 0) {
+	// if (syslibInit("postgresql://localhost:5432/test?user=test&password=test", NULL) != 0) {
+	// if (syslibInit("mysql://localhost/test?user=root&password=test", NULL) != 0) {
 		printf("Error: Cannot initialize database connection\n");
 		return 1;
 	}
+
+	char *st = syslibGetIdentification();
+	printf("%s\n", st);
+	free(st);
+
+	char *dbtype = syslibDBGetType();
+	printf("Database system: '%s'\n", dbtype);
+	free(dbtype);
 
 	printf("IP address 192.168.122.1 is %u\n", syslibIPToInt("192.168.122.1"));
 
@@ -4393,46 +4891,65 @@ int main()
 			(syslibSSHUserStateIPGet("user", "192.168.122.10") == 0) ? "Disa" : "A");
 		printf("%sllowing user 'user' IP address 192.168.1.10\n",
 			(syslibSSHUserStateIPGet("user", "192.168.1.10") == 0) ? "Disa" : "A");
+	}
 
+	if (syslibDBGetTypeID() == DB_TYPE_SQLITE) {
+		char *ret = NULL;
+
+		printf("Using database SQLite\n");
 		printf("Testing SQLite library functions ...\n");
-		syslibSQLiteSetMessageProcessor(sqlite_message_processor);
 
+		syslibSQLiteSetMessageProcessor(sqlite_message_processor);
+		syslibQuery("CREATE TABLE test(id int, val int, PRIMARY KEY(id))");
+		syslibQuery("INSERT INTO test(id, val) VALUES(3, 4294967296)");
+		ret = syslibSelect("SELECT val FROM test WHERE id = 3", 0, NULL);
+		printf("Select query returned: %s [syslibInit]\n", ret);
+		free(ret); ret = NULL;
+
+		/*
 		syslibSQLiteQuery("/tmp/test-sqlite.db", "CREATE TABLE test(id int, val int, PRIMARY KEY(id))", 0644);
 		syslibSQLiteQuery("/tmp/test-sqlite.db", "INSERT INTO test(id, val) VALUES(3, 4294967296)", 0644);
 		ret = syslibSQLiteSelect("/tmp/test-sqlite.db", "SELECT val FROM test WHERE id = 3", 0, NULL);
 		printf("Select query returned: %s [/tmp/test-sqlite.db]\n", ret);
 		free(ret); ret = NULL;
+		*/
 
 		printf("... done\n");
 	}
 	else
-		printf("SQLite not found on the system\n");
-
-	if (syslibHasPQLib() == 1) {
+	if (syslibDBGetTypeID() == DB_TYPE_PGSQL) {
 		char noticeTest[] = "DO language plpgsql $$\n"
 				"BEGIN\n"
 				"  RAISE NOTICE 'Test notice';\n"
 				"END\n"
 				"$$;";
 
+		printf("Using database PgSQL\n");
 		syslibPQSetMessageProcessor(pq_message_processor);
 
 		printf("Running '%s' on database system.\n", "INSERT INTO test(id, val) VALUES(5, 'test2')");
-		syslibQueryExecute("INSERT INTO test(id, val) VALUES(5, 'test2')", NULL);
-		syslibQueryExecute(noticeTest, NULL);
+		syslibQueryExecute("INSERT INTO test(id, val) VALUES(5, 'test2')");
+		syslibQueryExecute(noticeTest);
 		printf("... done\n");
 	}
 	else
-		printf("Cannot find libpq on the system\n");
-
-	if (syslibHasMariaLib() == 1) {
-		printf("MariaDB found on the system\n");
+	if (syslibDBGetTypeID() == DB_TYPE_MYSQL) {
+		printf("Using database MySQL/MariaDB\n");
 		printf("Ready to run tests ...\n");
+
+		syslibQueryExecute("DROP TABLE tab1;");
+		syslibQueryExecute("CREATE TABLE tab1(id int auto_increment, item text, val text, PRIMARY KEY(id));");
+		syslibQueryExecute("INSERT INTO tab1(item, val) VALUES('item1', 'value1')");
+		char *ret = syslibSelect("SELECT item FROM tab1;", 0, NULL);
+		printf("Field 'item' value is '%s'\n", ret);
+		free(ret);
 
 		printf("Tests done\n");
 	}
 	else
-		printf("Cannot find MariaDB on the system\n");
+		printf("No database connection defined\n");
+
+	//syslibDBConnectorDump();
 
 	syslibFree();
 	return 0;

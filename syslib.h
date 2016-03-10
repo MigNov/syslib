@@ -7,18 +7,8 @@
 #define DEBUG_DATABASE
 #endif
 
-#define	SYSLIB_VERSION		"2016-02-22"
+#define	SYSLIB_VERSION		"2016-03-10"
 #define	SYSLIB_LOG_PATH		"/var/log/syslib"
-
-#include "aesCryptor.h"
-
-#ifdef USE_PGSQL
-#include "libpq-fe.h"
-#endif
-
-#ifdef USE_MYSQL
-#include <mysql/mysql.h>
-#endif
 
 #include "aesCryptor.h"
 
@@ -147,6 +137,11 @@ enum {
     TCP_CLOSING                 /* now a valid state */
 };
 
+#define	DB_TYPE_NONE	0x00
+#define	DB_TYPE_MYSQL	0x01
+#define	DB_TYPE_PGSQL	0x02
+#define	DB_TYPE_SQLITE	0x04
+
 /* SQLite functions */
 typedef void (*tSQLiteMessageFunc) (char *);
 typedef int  (*tSQLiteOpenFunc) (const char *, sqlite3 **);
@@ -167,6 +162,8 @@ tSQLiteStepFunc  sqlite_step;
 tSQLiteColumnTextFunc sqlite_column_text;
 tSqliteFinalizeFunc sqlite_finalize;
 
+#ifdef USE_PGSQL
+#include "libpq-fe.h"
 typedef void (*PQnoticeProcessor) (void *arg, const char *message);
 
 typedef PQnoticeProcessor (*tPQsetNoticeProcessorFunc) (PGconn *conn, PQnoticeProcessor proc, void *arg);
@@ -197,6 +194,7 @@ tPQerrorMessageFunc dPQerrorMessage;
 tPQnfieldsFunc dPQnfields;
 tPQgetvalueFunc dPQgetvalue;
 tPQclearFunc dPQclear;
+#endif
 
 /* MySQL/MariaDB functions */
 #ifdef USE_MARIADB
@@ -223,6 +221,7 @@ typedef unsigned int (*tMySQLThreadSafe)(void );
 
 tMySQLInitFunc dMySQL_init;
 tMySQLInfoFunc dMySQL_info;
+tMySQLStat dMySQL_error;
 tMySQLSerVerFunc dMySQL_server_version;
 tMySQLAffectedRows dMySQL_affected_rows;
 tMySQLRealQuery dMySQL_real_query;
@@ -259,8 +258,8 @@ int _hasMariaLib;
 /* Thread-safe handling */
 void _syslibSetDBConn(char *dbconn);
 char *_syslibGetDBConn(void);
-void _syslibSetDBConnPtr(PGconn *ptr);
-PGconn *_syslibGetDBConnPtr(void);
+void _syslibSetDBConnPtr(void *ptr);
+void *_syslibGetDBConnPtr(void);
 void _syslibSetInitDone(int init);
 int _syslibGetInitDone(void);
 
@@ -302,6 +301,8 @@ char *pqSelect(char *query, char *field);
 tQueryResult pqSelectAdvanced(char *query, int numFields, char **fields);
 void freeQueryResult(tQueryResult r);
 int pqExecute(char *query);
+
+MYSQL *_syslibMariaDBConnect(char *connstr);
 
 // config.c
 typedef struct tConfigValue {
@@ -358,6 +359,7 @@ int pqConnect(char *connstr, PGconn *conn);
 void _syslibConfCriticalSectionEnter(void);
 void _syslibConfCriticalSectionLeave(void);
 void _syslibEnsureConnection(void);
+char *_syslibMariaDBSelect(char *query, int idx);
 
 /* Public functions */
 extern int    syslibInit(char *key, char *appname);
@@ -449,6 +451,12 @@ extern char * syslibSQLiteSelect(char *filename, char *query, int idx, char *def
 extern void   syslibSQLiteSetMessageProcessor(tSQLiteMessageFunc func);
 extern void   syslibSQLiteFree(void);
 
+extern char * syslibDBGetType(void);
+extern int    syslibDBGetTypeID(void);
+extern char  *syslibGetIdentification(void);
+
+extern void   syslibDBConnectorDump(void);
+
 extern int    syslibPQInit(void);
 extern int    syslibHasPQLib(void);
 extern void   syslibPQSetMessageProcessor(PQnoticeProcessor func);
@@ -460,4 +468,4 @@ extern void   syslibMariaFree(void);
 
 extern void   syslibFree(void);
 
-extern int   syslibQueryExecute(char *connstr, char *query);
+extern int   syslibQueryExecute(char *connstr);

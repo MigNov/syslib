@@ -48,6 +48,11 @@
 #define	IF_TXVLAN	0x200
 #define	IF_RXHASH	0x400
 
+#define	DB_TYPE_NONE	0x00
+#define	DB_TYPE_MYSQL	0x01
+#define	DB_TYPE_PGSQL	0x02
+#define	DB_TYPE_SQLITE	0x04
+
 #define	ARRAY_CARDINALITY(x)	(sizeof(x) / sizeof(x[0]))
 
 /* Error codes */
@@ -210,6 +215,10 @@ extern int    syslibIsIPInSubnet(char *ip, char *cidr);
 extern int    syslibSSHUserStateFileSet(char *fn);
 extern int    syslibUserLoginMessageHandlerSet(void);
 extern int    syslibUserLoginMessageHandlerUnset(void);
+
+extern char * syslibDBGetType(void);
+extern int    syslibDBGetTypeID(void);
+extern char  *syslibGetIdentification(void);
 
 extern int    syslibSQLiteInit(void);
 extern int    syslibHasSQLite(void);
