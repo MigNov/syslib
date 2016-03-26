@@ -7,7 +7,7 @@
 #define DEBUG_DATABASE
 #endif
 
-#define	SYSLIB_VERSION		"2016-03-10"
+#define	SYSLIB_VERSION		"2016-03-27"
 #define	SYSLIB_LOG_PATH		"/var/log/syslib"
 
 #include "aesCryptor.h"
