@@ -139,6 +139,53 @@ int main(void)
 	free(enc2);
 	free(dec2);
 
+	char *ident = syslibGetIdentification();
+	printf("Library syslib identification: %s\n", ident);
+	free(ident);
+
+	if (syslibIsPrivileged()) {
+		if (syslibCryptCreateWithExt4("/tmp/test.img", 256, "test"))
+			printf("Warning: Cannot create /tmp/test.img\n");
+		else {
+			int rc;
+			tDirListing dl;
+			tCryptSpace csp;
+
+			printf("File /tmp/test.img of 256 MiB created\n");
+
+			rc = syslibCryptMkdir("/tmp/test.img", "test", "testdir", "0755");
+			if (rc != 0)
+				printf("Error #%d\n", rc);
+
+			rc = syslibCryptFileWrite("/tmp/test.img", "test", "testdir/test.file", "Test data file...");
+			if (rc != 0)
+				printf("Error #%d\n", rc);
+
+			rc = syslibCryptFileWrite("/tmp/test.img", "test", "testdir/test2.file", "Test data file 2...");
+			if (rc != 0)
+				printf("Error #%d\n", rc);
+
+			csp = syslibCryptGetSpace("/tmp/test.img", "test");
+			printf("Space = { total: %ld, used: %ld, avail: %ld, percent: %d%% }\n", csp.total, csp.used, csp.avail, csp.percent);
+
+			dl = syslibCryptList("/tmp/test.img", "test", "testdir");
+			if (dl.files > 0) {
+				int i;
+
+				printf("File count: %d\nFiles:\n", dl.files);
+				for (i = 0; i < dl.files; i++)
+					printf("  %s\n", dl.filenames[i]);
+			}
+			syslibDirListingFree(dl);
+
+			char *data = syslibCryptFileRead("/tmp/test.img", "test", "testdir/test.file");
+			printf("Data: '%s'\n", data);
+			free(data);
+		}
+	}
+	else
+		printf("[SKIP] Not running as privileged user\n");
+
 	char *rev = syslibGetRevision();
 	printf("Library syslib revision: %s\n", rev);
 	free(rev);

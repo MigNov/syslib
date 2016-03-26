@@ -47,6 +47,8 @@
 #include <dlfcn.h>
 #include <termios.h>
 
+#include <libcryptsetup.h>
+
 #define	IF_RXCS		0x01
 #define	IF_TXCS		0x02
 #define	IF_SG		0x04
@@ -90,6 +92,27 @@
 #define LOG_LEVEL_DEBUG		0x10
 
 #define LOG_LEVEL_ALL           LOG_LEVEL_INFO | LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_VERBOSE | LOG_LEVEL_DEBUG
+
+typedef int (*tRunFunc) (const char *mp, const char *arg1, const char *arg2);
+
+typedef struct tDirListing {
+	int files;
+	char **filenames;
+} tDirListing;
+
+typedef struct tCryptSpace {
+	char *dev;
+	unsigned long total;
+	unsigned long used;
+	unsigned long avail;
+	unsigned short percent;
+} tCryptSpace;
+
+tCryptSpace gCryptSpace;
+
+char gCryptFileData[65536];
+int nCryptDirListing;
+char **gCryptDirListing;
 
 typedef struct tTokenizer {
 	char **tokens;
@@ -161,6 +184,28 @@ tSQLitePrepareFunc sqlite_prepare;
 tSQLiteStepFunc  sqlite_step;
 tSQLiteColumnTextFunc sqlite_column_text;
 tSqliteFinalizeFunc sqlite_finalize;
+
+typedef int  (*tCryptKeyslotAddVK) (struct crypt_device *cd, int keyslot, const char *volume_key, size_t volume_key_size, const char *passphrase, size_t passphrase_size);
+typedef int  (*tCryptActivatePP) (struct crypt_device *cd, const char *name, int keyslot, const char *passphrase, size_t passphrase_size, uint32_t flags);
+typedef int  (*tCryptStatus) (struct crypt_device *cd, const char *name);
+typedef const char * 	(*tCryptDevName) (struct crypt_device *cd);
+typedef int (*tCryptLoad) (struct crypt_device *cd, const char *requested_type, void *params);
+typedef void (*tCryptFree) (struct crypt_device *cd);
+typedef int (*tCryptFormat) (struct crypt_device *cd, const char *type, const char *cipher, const char *cipher_mode, const char *uuid, const char *volume_key, size_t volume_key_size, void *params);
+typedef int (*tCryptInit)(struct crypt_device **cd, const char *device);
+typedef int (*tCryptInitByName) (struct crypt_device **cd, const char *name);
+typedef int (*tCryptDeactivate) (struct crypt_device *cd, const char *name);
+
+tCryptKeyslotAddVK Dcrypt_keyslot_add_by_volume_key;
+tCryptActivatePP Dcrypt_activate_by_passphrase;
+tCryptStatus Dcrypt_status;
+tCryptDevName Dcrypt_get_device_name;
+tCryptLoad Dcrypt_load;
+tCryptFree Dcrypt_free;
+tCryptFormat Dcrypt_format;
+tCryptInit Dcrypt_init;
+tCryptInitByName Dcrypt_init_by_name;
+tCryptDeactivate Dcrypt_deactivate;
 
 #ifdef USE_PGSQL
 #include "libpq-fe.h"
@@ -250,10 +295,12 @@ PQnoticeProcessor gSMP_pq;
 void *_sqliteLib;
 void *_libpq;
 void *_libmaria;
+void *_cryptLib;
 
 int _hasSQLite;
 int _hasPQLib;
 int _hasMariaLib;
+int _hasCrypt;
 
 /* Thread-safe handling */
 void _syslibSetDBConn(char *dbconn);
@@ -444,12 +491,34 @@ extern int    syslibSSHUserLoginMessageSet(char *user, time_t tsFrom, time_t tsT
 extern char * syslibSSHUserLoginMessageGet(char *user, time_t ts);
 extern int    syslibCheckRunningAsShell(void);
 
+extern int    syslibCommandRun(char *cmd);
+extern int    syslibFileCreateEmpty(char *path, size_t size);
+extern int    syslibFileCreateFileSystemExt4(char *path);
+extern int    syslibDeviceMount(char *dev, char *path);
+extern int    syslibDeviceUnmount(char *path);
+extern int    syslibCryptCreate(const char *path, char *password);
+extern int    syslibCryptActivate(const char *path, const char *password, char *device_name, int readonly);
+extern int    syslibCryptDeactivate(char *device_name);
+extern int    syslibCryptCreateWithExt4(char *path, size_t size, char *password);
+extern int    syslibCryptMount(char *device_name, char *path);
+extern int    syslibCryptUnmount(char *device_name);
+extern int    syslibCryptMkdir(char *path, char *password, char *dir, char *perms);
+extern tDirListing syslibCryptList(char *path, char *password, char *dir);
+extern int    syslibCryptFileWrite(char *path, char *password, char *fpath, char *data);
+extern char * syslibCryptFileRead(char *path, char *password, char *fpath);
+extern tCryptSpace syslibCryptGetSpace(char *path, char *password);
+extern tDirListing syslibCryptLs(char *path, char *password, char *dir);
+extern void   syslibDirListingFree(tDirListing dl);
+
 extern int    syslibSQLiteInit(void);
 extern int    syslibHasSQLite(void);
 extern int    syslibSQLiteQuery(char *filename, char *query, int perms);
 extern char * syslibSQLiteSelect(char *filename, char *query, int idx, char *def);
 extern void   syslibSQLiteSetMessageProcessor(tSQLiteMessageFunc func);
 extern void   syslibSQLiteFree(void);
+
+extern int    syslibHasCryptLib(void);
+extern int    syslibIsPrivileged(void);
 
 extern char * syslibDBGetType(void);
 extern int    syslibDBGetTypeID(void);

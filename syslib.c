@@ -3039,6 +3039,10 @@ int syslibInit(char *key, char *appname)
 	dMySQL_close = NULL;
 	#endif
 
+	memset(gCryptFileData, 0, sizeof(gCryptFileData));
+	nCryptDirListing = 0;
+	gCryptDirListing = NULL;
+
 	DPRINTF("Initializing syslib version %s (TID #%d)\n",
 		SYSLIB_VERSION, _gettid());
 
@@ -3048,6 +3052,7 @@ int syslibInit(char *key, char *appname)
 	_hasPQLib = (syslibPQInit() == 0) ? 1 : 0;
 	_hasMariaLib = (syslibMariaInit() == 0) ? 1 : 0;
 	_hasSQLite = (syslibSQLiteInit() == 0) ? 1 : 0;
+	_hasCrypt = (syslibCryptInit() == 0) ? 1 : 0;
 
 	gInitDone = _syslibGetInitDone();
 	/* If connection initialization was already done then reuse existing connection */
@@ -3103,6 +3108,587 @@ int syslibInit(char *key, char *appname)
 
 	return (gInitDone) ? 0 : ret;
 }
+
+/* Start of encryption handling */
+
+/**
+ * Run system command
+ *
+ * @param  cmd     command to run
+ * @return application exit code
+ */
+int syslibCommandRun(char *cmd)
+{
+	int rc;
+
+	rc = WEXITSTATUS(system(cmd));
+	logWrite(LOG_LEVEL_DEBUG, "%s: Command '%s' returned %d\n", __FUNCTION__, cmd, rc);
+	DPRINTF("%s: Command '%s' returned %d\n", __FUNCTION__, cmd, rc);
+
+	return rc;
+}
+
+/**
+ * Create empty file of <size> MiB
+ *
+ * @param  path     file path
+ * @param  size     requested file size
+ * @return application exit code
+ */
+int syslibFileCreateEmpty(char *path, size_t size)
+{
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=1M count=%d > /dev/null 2>&1", path, (int)size);
+	return syslibCommandRun(cmd);
+}
+
+/**
+ * Create Ext4 file system on path
+ *
+ * @param  path     file path
+ * @return application exit code
+ */
+int syslibFileCreateFileSystemExt4(char *path)
+{
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "mkfs -t ext4 -m 0 %s > /dev/null 2>&1; sync", path);
+	return syslibCommandRun(cmd);
+}
+
+/**
+ * Mount device onto path
+ *
+ * @param  dev     device to mount
+ * @param  path    mountpoint where to mount
+ * @return application exit code
+ */
+int syslibDeviceMount(char *dev, char *path)
+{
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "mount %s %s > /dev/null 2>&1; sync", dev, path);
+	return syslibCommandRun(cmd);
+}
+
+/**
+ * Mount device from path
+ *
+ * @param  path    path to unmount
+ * @return application exit code
+ */
+int syslibDeviceUnmount(char *path)
+{
+	int rc;
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "umount %s > /dev/null 2>&1; sync", path);
+	return syslibCommandRun(cmd);
+}
+
+/**
+ * Create encrypted device
+ *
+ * @param  path    path to device to create
+ * @param  pasword password to use for encryption
+ * @return errno return value
+ */
+int syslibCryptCreate(const char *path, char *password)
+{
+	struct crypt_device *cd;
+	struct crypt_params_luks1 params;
+	int r;
+
+	r = Dcrypt_init(&cd, path);
+	if (r < 0 ) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
+		DPRINTF("%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
+		return r;
+	}
+
+	logWrite(LOG_LEVEL_DEBUG, "%s: Context is attached to block device %s.\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+	DPRINTF("%s: Context is attached to block device %s.\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+
+	params.hash = "sha512";
+	params.data_alignment = 0;
+	params.data_device = NULL;
+
+	r = Dcrypt_format(cd, CRYPT_LUKS1, "aes", "xts-plain64", NULL, NULL, 256 / 8, &params);
+	if(r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_format() failed on device %s\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+		DPRINTF("%s: crypt_format() failed on device %s\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+		Dcrypt_free(cd);
+		return r;
+	}
+
+	r = Dcrypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, NULL, 0, password, strlen(password));
+	if (r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: Adding keyslot failed.\n", __FUNCTION__);
+		DPRINTF("%s: Adding keyslot failed.\n", __FUNCTION__);
+		Dcrypt_free(cd);
+		return r;
+	}
+
+	Dcrypt_free(cd);
+	return 0;
+}
+
+/**
+ * Activate encrypted device
+ *
+ * @param  path         path to device to create
+ * @param  password     password to use for decryption
+ * @param  device_name  name of device to create in /dev/mapper context
+ * @param  readonly     initialize device as read-only
+ * @return errno return value
+ */
+int syslibCryptActivate(const char *path, const char *password, char *device_name, int readonly)
+{
+	struct crypt_device *cd;
+	int r;
+
+	r = Dcrypt_init(&cd, path);
+	if (r < 0 ) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
+		DPRINTF("%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
+		return r;
+	}
+
+	r = Dcrypt_load(cd, CRYPT_LUKS1, NULL);
+	if (r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_load() failed on device %s.\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+		DPRINTF("%s: crypt_load() failed on device %s.\n", __FUNCTION__, Dcrypt_get_device_name(cd));
+		Dcrypt_free(cd);
+		return r;
+	}
+
+	int flags = 0;
+	if (readonly == 1)
+		flags = CRYPT_ACTIVATE_READONLY;
+	r = Dcrypt_activate_by_passphrase(cd, device_name, CRYPT_ANY_SLOT, password, strlen(password), flags);
+	if (r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: Device %s activation failed.\n", device_name);
+		DPRINTF("%s: Device %s activation failed.\n", device_name);
+		Dcrypt_free(cd);
+		return r;
+	}
+	Dcrypt_free(cd);
+	return 0;
+}
+
+/**
+ * Deactivate encrypted device
+ *
+ * @param  device_name  name of device to create in /dev/mapper context
+ * @return errno return value
+ */
+int syslibCryptDeactivate(char *device_name)
+{
+	struct crypt_device *cd;
+	int r;
+
+	r = Dcrypt_init_by_name(&cd, device_name);
+	if (r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_init_by_name() failed for %s.\n", __FUNCTION__, device_name);
+		DPRINTF("%s: crypt_init_by_name() failed for %s.\n", __FUNCTION__, device_name);
+		return r;
+	}
+
+	if (Dcrypt_status(cd, device_name) != CRYPT_ACTIVE) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: Warning: Device %s is not active.\n", __FUNCTION__, device_name);
+		DPRINTF("%s: Warning: Device %s is not active.\n", __FUNCTION__, device_name);
+		Dcrypt_free(cd);
+		return -1;
+	}
+
+	r = Dcrypt_deactivate(cd, device_name);
+	if (r < 0) {
+		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_deactivate() failed.\n", __FUNCTION__);
+		DPRINTF("%s: crypt_deactivate() failed.\n", __FUNCTION__);
+		Dcrypt_free(cd);
+		return r;
+	}
+
+	Dcrypt_free(cd);
+	return 0;
+}
+
+/**
+ * Create encrypted volume and format as Ext4
+ *
+ * @param  path         path to device
+ * @param  size         size of new device to create
+ * @param  password     password for new device
+ * @return errno return value
+ */
+int syslibCryptCreateWithExt4(char *path, size_t size, char *password)
+{
+	int ret;
+	char *dev = NULL;
+	char cmd[1024] = { 0 };
+	char tmp[] = "/dev/mapper/cryptdevXXXXXX";
+
+	mkstemp(tmp);
+	dev = basename(tmp);
+
+	if (syslibFileCreateEmpty(path, size))
+		return -1;
+
+	if (syslibCryptCreate(path, password))
+		return -2;
+
+	if (syslibCryptActivate(path, password, dev, 0)) {
+		ret = -3;
+		goto cleanup;
+	}
+
+	snprintf(cmd, sizeof(cmd), "/dev/mapper/%s", dev);
+	if (syslibFileCreateFileSystemExt4(cmd)) {
+		ret = -4;
+		goto cleanup;
+	}
+
+	ret = 0;
+cleanup:
+	if (syslibCryptDeactivate(dev))
+		return -5;
+
+	return ret;
+}
+
+/**
+ * Mount encrypted device
+ *
+ * @param  device_name  device to mount
+ * @param  path         mountpoint where to mount
+ * @return errno return value
+ */
+int syslibCryptMount(char *device_name, char *path)
+{
+	char dev[1024] = { 0 };
+
+	snprintf(dev, sizeof(dev), "/dev/mapper/%s", device_name);
+
+	if (syslibDeviceMount(dev, path))
+		return 1;
+
+	return 0;
+}
+
+/**
+ * Unmount encrypted device
+ *
+ * @param  device_name  device to unmount
+ * @return errno return value
+ */
+int syslibCryptUnmount(char *device_name)
+{
+	char dev[1024] = { 0 };
+
+	snprintf(dev, sizeof(dev), "/dev/mapper/%s", device_name);
+
+	if (syslibDeviceUnmount(dev))
+		return 1;
+
+	return 0;
+}
+
+/**
+ * Run function on encrypted volume
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  func     function to run on open encrypted system
+ * @param  arg1     arg1 to pass to function func
+ * @param  arg2     arg2 to pass to function func
+ * @return errno return value
+ */
+int syslibCryptRunFunc(char *path, char *password, tRunFunc func, const char *arg1, char *arg2)
+{
+	int ret;
+	char *dev = NULL;
+	char tmp[] = "/dev/mapper/cryptdevXXXXXX";
+	char tmpMp[] = "/tmp/cryptmountXXXXXX";
+
+	mkstemp(tmp);
+	mkdtemp(tmpMp);
+	dev = basename(tmp);
+
+	if (syslibCryptActivate(path, password, dev, 0))
+		return -1;
+
+	mkdir(tmpMp, 0755);
+	if (syslibCryptMount(dev, tmpMp)) {
+		ret = -2;
+		goto cleanup;
+	}
+
+	if (func(tmpMp, arg1, arg2) != 0)
+		ret = -3;
+
+	if (syslibCryptUnmount(dev))
+		ret = -2;
+
+	ret = 0;
+cleanup:
+	if (syslibCryptDeactivate(dev))
+		ret = -3;
+
+	rmdir(tmpMp);
+	return ret;
+}
+
+int _syslibCryptMkdir(const char *mp, const char *arg1, const char *arg2)
+{
+	char cmd[1024] = { 0 };
+
+	DPRINTF("%s: Creating directory %s/%s (perms %s)\n", __FUNCTION__, mp, arg1, arg2);
+
+	if (arg2 == NULL)
+		snprintf(cmd, sizeof(cmd), "mkdir -p %s/%s", mp, arg1);
+	else
+		snprintf(cmd, sizeof(cmd), "mkdir -m %s -p %s/%s", arg2, mp, arg1);
+
+	return syslibCommandRun(cmd);
+}
+
+int _syslibCryptList(const char *mp, const char *arg1, const char *arg2)
+{
+	int ret = -ENOENT;
+	char cmd[1024] = { 0 };
+	char *dir = (arg1 == NULL) ? "." : arg1;
+
+	DPRINTF("%s: Listing %s/%s\n", __FUNCTION__, mp, dir);
+
+	snprintf(cmd, sizeof(cmd), "%s/%s", mp, dir);
+
+	DIR *dp = NULL;
+	struct dirent *ep;     
+	dp = opendir(cmd);
+
+	if (dp != NULL)
+	{
+		nCryptDirListing = 0;
+		gCryptDirListing = malloc( sizeof(char *) );
+		while ((ep = readdir (dp))) {
+			if ((strcmp(ep->d_name, ".") != 0) && (strcmp(ep->d_name, "..")) != 0) {
+				gCryptDirListing = realloc( gCryptDirListing, (nCryptDirListing + 1) * sizeof(char *) );
+				gCryptDirListing[nCryptDirListing++] = strdup(ep->d_name);
+			}
+		}
+
+		(void) closedir (dp);
+		ret = 0;
+	}
+
+	return ret;
+}
+
+int _syslibCryptFileWrite(const char *mp, const char *arg1, const char *arg2)
+{
+	int rc;
+	char fpath[1024] = { 0 };
+
+	if (arg1 == NULL)
+		return -EINVAL;
+
+	snprintf(fpath, sizeof(fpath), "%s/%s", mp, arg1);
+
+	if (arg2 != NULL) {
+		FILE *fp = fopen(fpath, "w");
+		if (fp == NULL)
+			return -EPERM;
+
+		DPRINTF("%s: Writing file %s\n", __FUNCTION__, fpath);
+		fprintf(fp, "%s", arg2);
+		fclose(fp);
+
+		rc = 0;
+	}
+	else {
+		snprintf(fpath, sizeof(fpath), "rm -f %s/%s; touch %s/%s", mp, arg1, mp, arg1);
+		rc = syslibCommandRun(fpath);
+	}
+
+	return rc;
+}
+
+int _syslibCryptFileRead(const char *mp, const char *arg1, const char *arg2)
+{
+	char buf[4096] = { 0 };
+	char fpath[1024] = { 0 };
+
+	if (arg1 == NULL)
+		return -EINVAL;
+
+	snprintf(fpath, sizeof(fpath), "%s/%s", mp, arg1);
+	if (access(fpath, F_OK) != 0)
+		return -ENOENT;
+
+	FILE *fp = fopen(fpath, "r");
+	if (fp == NULL)
+		return -EINVAL;
+
+	memset(gCryptFileData, 0, sizeof(gCryptFileData));
+	while (!feof(fp)) {
+		fgets(buf, sizeof(buf), fp);
+
+		strcat(gCryptFileData, buf);
+	}
+	fclose(fp);
+	return 0;
+}
+
+int _syslibCryptGetSpace(const char *mp, const char *arg1, const char *arg2)
+{
+	struct statfs st;
+
+	if (statfs(mp, &st) != 0)
+		return -EINVAL;
+
+	gCryptSpace.total   = (unsigned long)(st.f_bsize * st.f_blocks);
+	gCryptSpace.avail   = (unsigned long)(st.f_bsize * st.f_bavail);
+	gCryptSpace.used    = gCryptSpace.total - (unsigned long)(st.f_bsize * st.f_bfree);
+	gCryptSpace.percent = ceil((float)gCryptSpace.used / (float)(gCryptSpace.total / 100.));
+	return 0;
+}
+
+/**
+ * Create directory on path
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  dir      directory to create
+ * @param  perms    permissions to grant
+ * @return errno return value
+ */
+int syslibCryptMkdir(char *path, char *password, char *dir, char *perms)
+{
+	return syslibCryptRunFunc(path, password, _syslibCryptMkdir, dir, perms);
+}
+
+/**
+ * List files and directories directory on path
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  dir      directory to list
+ * @return tDirListing structure
+ */
+tDirListing syslibCryptList(char *path, char *password, char *dir)
+{
+	int i, rc;
+	tDirListing ret;
+
+	gCryptDirListing = NULL;
+	nCryptDirListing = 0;
+	rc = syslibCryptRunFunc(path, password, _syslibCryptList, dir, NULL);
+
+	if (rc == 0) {
+		ret.files = nCryptDirListing;
+		ret.filenames = malloc( (ret.files + 1) * sizeof(char *) );
+
+		for (i = 0; i < nCryptDirListing; i++) {
+			ret.filenames[i] = strdup(gCryptDirListing[i]);
+			free(gCryptDirListing[i]);
+		}
+		free(gCryptDirListing);
+	}
+	else
+		ret.files = 0;
+
+	return ret;
+}
+
+/**
+ * Write file onto encrypted device
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  fpath    file path to write
+ * @param  data     data to write to file
+ * @return errno return value
+ */
+int syslibCryptFileWrite(char *path, char *password, char *fpath, char *data)
+{
+	return syslibCryptRunFunc(path, password, _syslibCryptFileWrite, fpath, data);
+}
+
+/**
+ * Read file from encrypted device
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  fpath    file path to write
+ * @return string read from file
+ */
+char *syslibCryptFileRead(char *path, char *password, char *fpath)
+{
+	if (syslibCryptRunFunc(path, password, _syslibCryptFileRead, fpath, NULL) == 0)
+		return strdup(gCryptFileData);
+
+	return NULL;
+}
+
+/**
+ * Read information about encrypted space
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @return tCryptSpace structure
+ */
+tCryptSpace syslibCryptGetSpace(char *path, char *password)
+{
+	int rc;
+	tCryptSpace ret;
+
+	rc = syslibCryptRunFunc(path, password, _syslibCryptGetSpace, NULL, NULL);
+	if (rc == 0) {
+		ret.total = gCryptSpace.total;
+		ret.avail = gCryptSpace.avail;
+		ret.used = gCryptSpace.used;
+		ret.percent = gCryptSpace.percent;
+	}
+	else {
+		ret.total = 0;
+		ret.avail = 0;
+		ret.used = 0;
+		ret.percent = 0;
+	}
+
+	return ret;
+}
+
+/**
+ * List files and directories directory on path (alias for syslibCryptList)
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  dir      directory to list
+ * @return tDirListing structure
+ */
+tDirListing syslibCryptLs(char *path, char *password, char *dir)
+{
+	return syslibCryptList(path, password, dir);
+}
+
+/**
+ * Free directory listing previously allocated by syslibCryptList/syslibCryptLs
+ *
+ * @param  dl       tDirListing structure to deallocate
+ * @return None
+ */
+void syslibDirListingFree(tDirListing dl)
+{
+	int i;
+
+	for (i = 0; i < dl.files; i++)
+		free(dl.filenames[i]);
+	free(dl.filenames);
+}
+
+/* End of encryption handling */
 
 /**
  * Set logging for current thread scope
@@ -3164,6 +3750,17 @@ void mdCleanup(void)
 	DPRINTF("MySQL/MariaDB connection pointer closed\n");
 }
 
+/*
+ * Free CryptSetup functions
+ */
+void syslibCryptFree(void)
+{
+	if (_hasCrypt == 1)
+		if (_cryptLib != NULL)
+			dlclose(_cryptLib);
+	_hasCrypt = 0;
+}
+
 /**
  * Free library if not required anymore
  *
@@ -3197,6 +3794,7 @@ void syslibFree(void)
 		_confFree();
 	}
 
+	syslibCryptFree();
 	syslibSQLiteFree();
 	syslibMariaFree();
 	syslibPQFree();
@@ -4109,6 +4707,49 @@ int syslibUserLoginMessageHandlerUnset(void)
 }
 
 /*
+ * Initialize SQLite functions
+ *
+ * @return errno value
+ */
+int syslibCryptInit(void)
+{
+	_cryptLib = dlopen("libcryptsetup.so", RTLD_LAZY);
+	if (_cryptLib == NULL)
+		return -ENOENT;
+	Dcrypt_keyslot_add_by_volume_key = dlsym(_cryptLib, "crypt_keyslot_add_by_volume_key");
+	Dcrypt_activate_by_passphrase = dlsym(_cryptLib, "crypt_activate_by_passphrase");
+	Dcrypt_status = dlsym(_cryptLib, "crypt_status");
+	Dcrypt_get_device_name = dlsym(_cryptLib, "crypt_get_device_name");
+	Dcrypt_load = dlsym(_cryptLib, "crypt_load");
+	Dcrypt_free = dlsym(_cryptLib, "crypt_free");
+	Dcrypt_format = dlsym(_cryptLib, "crypt_format");
+	Dcrypt_init = dlsym(_cryptLib, "crypt_init");
+	Dcrypt_init_by_name = dlsym(_cryptLib, "crypt_init_by_name");
+	Dcrypt_deactivate = dlsym(_cryptLib, "crypt_deactivate");
+
+	if ((Dcrypt_keyslot_add_by_volume_key == NULL) || (Dcrypt_activate_by_passphrase == NULL) || (Dcrypt_status == NULL)
+		|| (Dcrypt_get_device_name == NULL) || (Dcrypt_load == NULL) || (Dcrypt_free == NULL)
+		|| (Dcrypt_format == NULL) || (Dcrypt_init == NULL) || (Dcrypt_init_by_name == NULL)
+		|| (Dcrypt_deactivate == NULL)) {
+		dlerror();
+		dlclose(_cryptLib);
+		return -ENOENT;
+	}
+
+	return 0;
+}
+
+/*
+ * Get information whether there's cryptsetup present on the system
+ *
+ * @return boolean
+ */
+int syslibHasCrypt(void)
+{
+	return _hasCrypt;
+}
+
+/*
  * Get database type identificator
  *
  * @return get database type id
@@ -4670,6 +5311,11 @@ char *syslibGetIdentification(void)
 		strcat(tmp, "PgSQL,");
 	if (syslibHasMariaLib() == 1)
 		strcat(tmp, "MySQL,");
+	if (syslibHasCryptLib() == 1) {
+		if (!syslibIsPrivileged())
+			strcat(tmp, "-");
+		strcat(tmp, "crypt,");
+	}
 
 	if (tmp[strlen(tmp) - 1] == ',')
 		tmp[strlen(tmp) - 1] = ']';
@@ -4687,6 +5333,26 @@ char *syslibGetIdentification(void)
 int syslibHasMariaLib(void)
 {
 	return _hasPQLib;
+}
+
+/*
+ * Get information whether there's CryptSetup present on the system
+ *
+ * @return boolean
+ */
+int syslibHasCryptLib(void)
+{
+	return _hasCrypt;
+}
+
+/*
+ * Get information whether there's library is running as privileged user
+ *
+ * @return boolean
+ */
+int syslibIsPrivileged(void)
+{
+	return (geteuid() == 0);
 }
 
 /*

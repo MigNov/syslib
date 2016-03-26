@@ -36,6 +36,8 @@
 #include <dlfcn.h>
 #include <termios.h>
 
+#include <libcryptsetup.h>
+
 #define	IF_RXCS		0x01
 #define	IF_TXCS		0x02
 #define	IF_SG		0x04
@@ -75,6 +77,19 @@
 
 #define LOG_LEVEL_ALL           LOG_LEVEL_INFO | LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_VERBOSE | LOG_LEVEL_DEBUG
 
+typedef struct tDirListing {
+	int files;
+	char **filenames;
+} tDirListing;
+
+typedef struct tCryptSpace {
+	char *dev;
+	unsigned long total;
+	unsigned long used;
+	unsigned long avail;
+	unsigned short percent;
+} tCryptSpace;
+
 typedef struct tTokenizer {
 	char **tokens;
 	int numTokens;
@@ -88,7 +103,6 @@ typedef struct tInstance {
 	char *debugFile;
 	int debugFlags;
 } tInstance;
-
 
 typedef struct tQueryField {
 	char *name;
@@ -216,9 +230,30 @@ extern int    syslibSSHUserStateFileSet(char *fn);
 extern int    syslibUserLoginMessageHandlerSet(void);
 extern int    syslibUserLoginMessageHandlerUnset(void);
 
+extern int    syslibCommandRun(char *cmd);
+extern int    syslibFileCreateEmpty(char *path, size_t size);
+extern int    syslibFileCreateFileSystemExt4(char *path);
+extern int    syslibDeviceMount(char *dev, char *path);
+extern int    syslibDeviceUnmount(char *path);
+extern int    syslibCryptCreate(const char *path, char *password);
+extern int    syslibCryptActivate(const char *path, const char *password, char *device_name, int readonly);
+extern int    syslibCryptDeactivate(char *device_name);
+extern int    syslibCryptCreateWithExt4(char *path, size_t size, char *password);
+extern int    syslibCryptMount(char *device_name, char *path);
+extern int    syslibCryptUnmount(char *device_name);
+extern int    syslibCryptMkdir(char *path, char *password, char *dir, char *perms);
+extern tDirListing syslibCryptList(char *path, char *password, char *dir);
+extern int    syslibCryptFileWrite(char *path, char *password, char *fpath, char *data);
+extern char * syslibCryptFileRead(char *path, char *password, char *fpath);
+extern tCryptSpace syslibCryptGetSpace(char *path, char *password);
+extern tDirListing syslibCryptLs(char *path, char *password, char *dir);
+extern void   syslibDirListingFree(tDirListing dl);
+
 extern char * syslibDBGetType(void);
 extern int    syslibDBGetTypeID(void);
 extern char  *syslibGetIdentification(void);
+extern int    syslibHasCryptLib(void);
+extern int    syslibIsPrivileged(void);
 
 extern int    syslibSQLiteInit(void);
 extern int    syslibHasSQLite(void);
