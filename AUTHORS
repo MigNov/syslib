@@ -10,6 +10,7 @@ For compilation header files of following components are required:
 - sqlite3
 - libpq (PostgreSQL)
 - mariadb/MySQL
+- libcryptsetup
 
 Library was written:
 
