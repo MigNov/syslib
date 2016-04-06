@@ -214,7 +214,7 @@ char *systemHostID(void)
 	char tmp[128] = { 0 };
 	snprintf(tmp, sizeof(tmp), "hostid-%ld", gethostid());
 
-	return strdup(tmp);
+	return getMd5Sum(tmp);
 }
 
 unsigned char *UUIDToRaw(char *uuid, int len)
