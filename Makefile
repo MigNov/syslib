@@ -8,6 +8,7 @@ BINARY=syslib
 LIBRARY=libsyslib.so
 INCLUDE=-I`pg_config --includedir`
 OBJECTS=utils.c syslib.c database.c syslib.h aesCryptor.c
+# OPENSSL_armcap=0 environment variable is required for RPi & ARM archs
 
 all: lib-compile lib-test
 
@@ -68,10 +69,10 @@ static-lib-install:
 	cp libsyslib.a /tmp/buildsyslib.a
 
 lib-test:
-	LD_LIBRARY_PATH=`pwd`:$(LD_LIBRARY_PATH) ./example/example $(ARGS)
+	OPENSSL_armcap=0 LD_LIBRARY_PATH=`pwd`:$(LD_LIBRARY_PATH) ./example/example $(ARGS)
 
 lib-thread-test:
-	LD_LIBRARY_PATH=`pwd`:$(LD_LIBRARY_PATH) ./example/examplep $(ARGS)
+	OPENSSL_armcap=0 LD_LIBRARY_PATH=`pwd`:$(LD_LIBRARY_PATH) ./example/examplep $(ARGS)
 
 clean:
 	rm -f $(BINARY) example/example example/examplep

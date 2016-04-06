@@ -209,6 +209,13 @@ char *systemGetUUID(void)
 	return NULL;
 }
 
+char *systemHostID(void)
+{
+	char tmp[128] = { 0 };
+	snprintf(tmp, sizeof(tmp), "hostid-%ld", gethostid());
+
+	return strdup(tmp);
+}
 
 unsigned char *UUIDToRaw(char *uuid, int len)
 {
@@ -224,6 +231,11 @@ unsigned char *UUIDToRaw(char *uuid, int len)
 
 	if (uuid == NULL)
 		return NULL;
+
+	if (strlen(uuid) == 0) {
+		uuid = systemHostID();
+		doFree = 1;
+	}
 
 	ret = (unsigned char *)malloc( len * sizeof(unsigned char) );
 	memset(ret, 0, len * sizeof(unsigned char) );
