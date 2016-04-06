@@ -3109,8 +3109,6 @@ int syslibInit(char *key, char *appname)
 	return (gInitDone) ? 0 : ret;
 }
 
-/* Start of encryption handling */
-
 /**
  * Run system command
  *
@@ -3200,6 +3198,9 @@ int syslibCryptCreate(const char *path, char *password)
 	struct crypt_params_luks1 params;
 	int r;
 
+	if (_hasCrypt == 0)
+		return -ENOTSUP;
+
 	r = Dcrypt_init(&cd, path);
 	if (r < 0 ) {
 		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
@@ -3248,6 +3249,9 @@ int syslibCryptActivate(const char *path, const char *password, char *device_nam
 	struct crypt_device *cd;
 	int r;
 
+	if (_hasCrypt == 0)
+		return -ENOTSUP;
+
 	r = Dcrypt_init(&cd, path);
 	if (r < 0 ) {
 		logWrite(LOG_LEVEL_DEBUG, "%s: crypt_init() failed for %s.\n", __FUNCTION__, path);
@@ -3287,6 +3291,9 @@ int syslibCryptDeactivate(char *device_name)
 {
 	struct crypt_device *cd;
 	int r;
+
+	if (_hasCrypt == 0)
+		return -ENOTSUP;
 
 	r = Dcrypt_init_by_name(&cd, device_name);
 	if (r < 0) {
@@ -3687,8 +3694,6 @@ void syslibDirListingFree(tDirListing dl)
 		free(dl.filenames[i]);
 	free(dl.filenames);
 }
-
-/* End of encryption handling */
 
 /**
  * Set logging for current thread scope
