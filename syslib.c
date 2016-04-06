@@ -1493,8 +1493,8 @@ char *_syslibSystemUUID(void)
 	fp = popen(cmd, "r");
 	if (fp == NULL) {
 		setuid(uid);
-		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system.\n", __FUNCTION__);
-		return NULL;
+		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system. Trying to get host ID ...\n", __FUNCTION__);
+		return systemHostID();
 	}
 
 	fgets(uuid, sizeof(uuid), fp);
@@ -1504,16 +1504,16 @@ char *_syslibSystemUUID(void)
 	if (strnlen(uuid, sizeof(uuid)) > 0)
                 uuid[strnlen(uuid, sizeof(uuid)) - 1] = 0;
 	if (strnlen(uuid, sizeof(uuid)) == 0) {
-		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system.\n", __FUNCTION__);
-		return NULL;
+		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system. Trying to get host ID ...\n", __FUNCTION__);
+		return systemHostID();
 	}
 
 	snprintf(cmd, sizeof(cmd), "echo \"%s\" | md5sum | awk '{split($0, a, \" \"); print a[1]}'", uuid);
 
 	fp = popen(cmd, "r");
 	if (fp == NULL) {
-		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system.\n", __FUNCTION__);
-		return NULL;
+		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system. Trying to get host ID ...\n", __FUNCTION__);
+		return systemHostID();
 	}
 
 	fgets(uuid, sizeof(uuid), fp);
@@ -1522,8 +1522,8 @@ char *_syslibSystemUUID(void)
 	if (strnlen(uuid, sizeof(uuid)) > 0)
 		uuid[strnlen(uuid, sizeof(uuid)) - 1] = 0;
 	else {
-		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system.\n", __FUNCTION__);
-		return NULL;
+		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system. Trying to get host ID ...\n", __FUNCTION__);
+		return systemHostID();
 	}
 
 	logWrite(LOG_LEVEL_DEBUG, "%s: Machine ID read from system successfully.\n", __FUNCTION__);
