@@ -149,14 +149,15 @@ int main(void)
 	free(ident);
 
 	if (syslibIsPrivileged()) {
-		if (syslibCryptCreateWithExt4("/tmp/test.img", 256, "test"))
+		unlink("/tmp/test.img");
+		if (syslibCryptCreateWithExt4("/tmp/test.img", 32, "test"))
 			printf("Warning: Cannot create /tmp/test.img\n");
 		else {
 			int rc;
 			tDirListing dl;
 			tCryptSpace csp;
 
-			printf("File /tmp/test.img of 256 MiB created\n");
+			printf("File /tmp/test.img of 32 MiB created\n");
 
 			rc = syslibCryptMkdir("/tmp/test.img", "test", "testdir", "0755");
 			if (rc != 0)
