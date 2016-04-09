@@ -3130,7 +3130,7 @@ int syslibCommandRun(char *cmd)
  * Create empty file of <size> MiB
  *
  * @param  path     file path
- * @param  size     requested file size
+ * @param  size     requested file size in MiB
  * @return application exit code
  */
 int syslibFileCreateEmpty(char *path, size_t size)
@@ -3521,6 +3521,34 @@ int _syslibCryptFileWrite(const char *mp, const char *arg1, const char *arg2)
 	return rc;
 }
 
+int _syslibCryptFileCopy(const char *mp, const char *arg1, const char *arg2)
+{
+	char fpath[1024] = { 0 };
+
+	if ((arg1 == NULL) || (arg2 == NULL))
+		return -EINVAL;
+
+	if (access(arg1, R_OK) != 0)
+		return -EINVAL;
+
+	snprintf(fpath, sizeof(fpath), "cp %s %s/%s", arg1, mp, arg2);
+	return syslibCommandRun(fpath);
+}
+
+int _syslibCryptFileDelete(const char *mp, const char *arg1, const char *arg2)
+{
+	char fpath[1024] = { 0 };
+
+	if (arg1 == NULL)
+		return -EINVAL;
+
+	snprintf(fpath, sizeof(fpath), "%s/%s", mp, arg1);
+	if (access(fpath, F_OK) != 0)
+		return -EINVAL;
+
+	return (unlink(fpath) == 0) ? 0 : -errno;
+}
+
 int _syslibCryptFileRead(const char *mp, const char *arg1, const char *arg2)
 {
 	char buf[4096] = { 0 };
@@ -3620,6 +3648,33 @@ tDirListing syslibCryptList(char *path, char *password, char *dir)
 int syslibCryptFileWrite(char *path, char *password, char *fpath, char *data)
 {
 	return syslibCryptRunFunc(path, password, _syslibCryptFileWrite, fpath, data);
+}
+
+/*
+ * Copy a file onto encrypted device
+ *
+ * @param  path       device path
+ * @param  password   password to open device
+ * @param  sourceFile source file on local file system
+ * @param  destFile   file to be created on encrypted file system
+ * @return errno return value
+ */
+int syslibCryptFileCopy(char *path, char *password, char *sourceFile, char *destFile)
+{
+	return syslibCryptRunFunc(path, password, _syslibCryptFileCopy, sourceFile, destFile);
+}
+
+/*
+ * Delete a file from encrypted device
+ *
+ * @param  path     device path
+ * @param  password password to open device
+ * @param  fpath    file path to delete on encrypted device
+ * @return errno return value
+ */
+int syslibCryptFileDelete(char *path, char *password, char *fpath)
+{
+	return syslibCryptRunFunc(path, password, _syslibCryptFileDelete, fpath, NULL);
 }
 
 /**

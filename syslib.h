@@ -505,6 +505,8 @@ extern int    syslibCryptUnmount(char *device_name);
 extern int    syslibCryptMkdir(char *path, char *password, char *dir, char *perms);
 extern tDirListing syslibCryptList(char *path, char *password, char *dir);
 extern int    syslibCryptFileWrite(char *path, char *password, char *fpath, char *data);
+extern int    syslibCryptFileCopy(char *path, char *password, char *sourceFile, char *destFile);
+extern int    syslibCryptFileDelete(char *path, char *password, char *fpath);
 extern char * syslibCryptFileRead(char *path, char *password, char *fpath);
 extern tCryptSpace syslibCryptGetSpace(char *path, char *password);
 extern tDirListing syslibCryptLs(char *path, char *password, char *dir);

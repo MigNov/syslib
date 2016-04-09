@@ -150,29 +150,49 @@ int main(void)
 
 	if (syslibIsPrivileged()) {
 		unlink("/tmp/test.img");
-		if (syslibCryptCreateWithExt4("/tmp/test.img", 32, "test"))
+		if (syslibCryptCreateWithExt4("/tmp/test.img", 8, "test"))
 			printf("Warning: Cannot create /tmp/test.img\n");
 		else {
 			int rc;
 			tDirListing dl;
 			tCryptSpace csp;
 
-			printf("File /tmp/test.img of 32 MiB created\n");
+			printf("File /tmp/test.img of 8 MiB created\n");
 
 			rc = syslibCryptMkdir("/tmp/test.img", "test", "testdir", "0755");
 			if (rc != 0)
-				printf("Error #%d\n", rc);
+				printf("syslibCryptMkdir error #%d\n", rc);
 
 			rc = syslibCryptFileWrite("/tmp/test.img", "test", "testdir/test.file", "Test data file...");
 			if (rc != 0)
-				printf("Error #%d\n", rc);
+				printf("syslibCryptFileWrite error #%d\n", rc);
 
 			rc = syslibCryptFileWrite("/tmp/test.img", "test", "testdir/test2.file", "Test data file 2...");
 			if (rc != 0)
-				printf("Error #%d\n", rc);
+				printf("syslibCryptFileWrite error #%d\n", rc);
+
+			printf("Creating /tmp/local-file (4 MiB) for upload as testdir/copied.file\n");
+			rc = syslibFileCreateEmpty("/tmp/local-file", 4);
+			if (rc != 0)
+				printf("syslibFileCreateEmpty error #%d\n", rc);
+
+			printf("Copying /tmp/local-file as testdir/copied.file to encrypted volume\n");
+			rc = syslibCryptFileCopy("/tmp/test.img", "test", "/tmp/local-file", "testdir/copied.file");
+			if (rc != 0)
+				printf("syslibCryptFileCopy error #%d\n", rc);
 
 			csp = syslibCryptGetSpace("/tmp/test.img", "test");
-			printf("Space = { total: %ld, used: %ld, avail: %ld, percent: %d%% }\n", csp.total, csp.used, csp.avail, csp.percent);
+			printf("syslibCryptGetSpace = { total: %ld, used: %ld, avail: %ld, percent: %d%% }\n",
+				csp.total, csp.used, csp.avail, csp.percent);
+
+			printf("Deleting testdir/copied.file\n");
+			rc = syslibCryptFileDelete("/tmp/test.img", "test", "testdir/copied.file");
+			if (rc != 0)
+				printf("syslibCryptFileCopy error #%d\n", rc);
+
+			csp = syslibCryptGetSpace("/tmp/test.img", "test");
+			printf("syslibCryptGetSpace = { total: %ld, used: %ld, avail: %ld, percent: %d%% }\n",
+				csp.total, csp.used, csp.avail, csp.percent);
 
 			dl = syslibCryptList("/tmp/test.img", "test", "testdir");
 			if (dl.files > 0) {
@@ -185,7 +205,7 @@ int main(void)
 			syslibDirListingFree(dl);
 
 			char *data = syslibCryptFileRead("/tmp/test.img", "test", "testdir/test.file");
-			printf("Data: '%s'\n", data);
+			printf("syslibCryptFileRead read data: '%s'\n", data);
 			free(data);
 		}
 	}
