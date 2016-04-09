@@ -58,7 +58,10 @@ int main(void)
 	char *drvBus = syslibInterfaceGetDriverBusInfo(INTERFACE);
 	char *drvFW = syslibInterfaceGetDriverFWVersion(INTERFACE);
 	char *drvMAC = syslibInterfaceGetMACAddress(INTERFACE);
-	printf("Interface %s driver: %s %s [bus %s; firmware: %s, mac: %s]\n", INTERFACE, drv, drvVer, drvBus, drvFW, drvMAC);
+	if (drv != NULL)
+		printf("Interface %s driver: %s %s [bus %s; firmware: %s, mac: %s]\n", INTERFACE, drv, drvVer, drvBus, drvFW, drvMAC);
+	else
+		printf("Interface %s information cannot be retrieved\n", INTERFACE);
 	free(drvMAC);
 	free(drvFW);
 	free(drvBus);
@@ -68,7 +71,7 @@ int main(void)
 	if (syslibEnsureUUIDFile() != 0)
 		printf("Warning: Cannot ensure that UUID file exists\n");
 	else
-		printf("UUID file exists\n");
+		printf("Information: UUID file exists\n");
 
 	char *shorthn = syslibGetShortHostName();
 	printf("Short hostname is: %s\n", shorthn);
@@ -191,7 +194,10 @@ int main(void)
 	free(rev);
 
 	char *tmpIf = syslibQueryGetSingle("table", "val", shorthn, "interface = '"INTERFACE"'", NULL);
-	printf("Value for %s is: %s\n", INTERFACE, tmpIf);
+	if (tmpIf != NULL)
+		printf("Value for %s is: %s\n", INTERFACE, tmpIf);
+	else
+		printf("Value for %s is NULL\n", INTERFACE);
 	free(tmpIf);
 
 	syslibFree();

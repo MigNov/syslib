@@ -1636,7 +1636,7 @@ char *syslibGetConnectionString(char *key)
 	if (k == NULL)
 		return NULL;
 
-	if (strncmp(k, "$9$", 3) == 0)
+	if ((strncmp(k, "$9$", 3) == 0) || (strncmp(k, "$A$", 3) == 0))
 		ret = aesDecryptData(k + 3, NULL, 0, (k[1] == 'A') ? 1 : 0);
 	else
 		ret = strdup(k);
