@@ -3531,7 +3531,41 @@ int _syslibCryptFileCopy(const char *mp, const char *arg1, const char *arg2)
 	if (access(arg1, R_OK) != 0)
 		return -EINVAL;
 
-	snprintf(fpath, sizeof(fpath), "cp %s %s/%s", arg1, mp, arg2);
+	if ((arg1[0] == '/') && (arg2[0] != '/'))
+		snprintf(fpath, sizeof(fpath), "cp %s %s/%s", arg1, mp, arg2);
+	else
+	if ((arg1[0] != '/') && (arg2[0] == '/'))
+		snprintf(fpath, sizeof(fpath), "cp %s/%s %s", mp, arg2, arg1);
+	else
+	if ((arg1[0] != '/') && (arg2[0] != '/'))
+		snprintf(fpath, sizeof(fpath), "cp %s/%s %s/%s", arg1, mp, arg2, arg1);
+	else
+		return -EINVAL;
+
+	return syslibCommandRun(fpath);
+}
+
+int _syslibCryptFileMove(const char *mp, const char *arg1, const char *arg2)
+{
+	char fpath[1024] = { 0 };
+
+	if ((arg1 == NULL) || (arg2 == NULL))
+		return -EINVAL;
+
+	if (access(arg1, R_OK) != 0)
+		return -EINVAL;
+
+	if ((arg1[0] == '/') && (arg2[0] != '/'))
+		snprintf(fpath, sizeof(fpath), "mv %s %s/%s", arg1, mp, arg2);
+	else
+	if ((arg1[0] != '/') && (arg2[0] == '/'))
+		snprintf(fpath, sizeof(fpath), "mv %s/%s %s", mp, arg2, arg1);
+	else
+	if ((arg1[0] != '/') && (arg2[0] != '/'))
+		snprintf(fpath, sizeof(fpath), "mv %s/%s %s/%s", arg1, mp, arg2, arg1);
+	else
+		return -EINVAL;
+
 	return syslibCommandRun(fpath);
 }
 
@@ -3662,6 +3696,20 @@ int syslibCryptFileWrite(char *path, char *password, char *fpath, char *data)
 int syslibCryptFileCopy(char *path, char *password, char *sourceFile, char *destFile)
 {
 	return syslibCryptRunFunc(path, password, _syslibCryptFileCopy, sourceFile, destFile);
+}
+
+/*
+ * Move a file
+ *
+ * @param  path       device path
+ * @param  password   password to open device
+ * @param  sourceFile source file on local file system
+ * @param  destFile   file to be created on encrypted file system
+ * @return errno return value
+ */
+int syslibCryptFileMove(char *path, char *password, char *sourceFile, char *destFile)
+{
+	return syslibCryptRunFunc(path, password, _syslibCryptFileMove, sourceFile, destFile);
 }
 
 /*
@@ -4773,7 +4821,7 @@ int syslibUserLoginMessageHandlerUnset(void)
  */
 int syslibCryptInit(void)
 {
-	_cryptLib = dlopen("libcryptsetup.so", RTLD_LAZY);
+	_cryptLib = dlopen(LIB_CRYPTSETUP, RTLD_LAZY);
 	if (_cryptLib == NULL)
 		return -ENOENT;
 	Dcrypt_keyslot_add_by_volume_key = dlsym(_cryptLib, "crypt_keyslot_add_by_volume_key");
@@ -4961,7 +5009,7 @@ void syslibSQLiteSetMessageProcessor(tSQLiteMessageFunc func)
  */
 int syslibSQLiteInit(void)
 {
-	_sqliteLib = dlopen("libsqlite3.so", RTLD_LAZY);
+	_sqliteLib = dlopen(LIB_SQLITE3, RTLD_LAZY);
 	if (_sqliteLib == NULL)
 		return -ENOENT;
 	sqlite_open = dlsym(_sqliteLib, "sqlite3_open");
@@ -5186,7 +5234,7 @@ char *_syslibMariaDBSelect(char *query, int idx)
  */
 int syslibPQInit(void)
 {
-	_libpq = dlopen("libpq.so", RTLD_LAZY);
+	_libpq = dlopen(LIB_PGSQLPQ, RTLD_LAZY);
 	if (_libpq == NULL)
 		return -ENOENT;
 	dPQsetNoticeProcessor = dlsym(_libpq, "PQsetNoticeProcessor");
@@ -5275,7 +5323,7 @@ void syslibPQSetMessageProcessor(PQnoticeProcessor func)
  */
 int syslibMariaInit(void)
 {
-	_libmaria = dlopen("libmysqlclient.so", RTLD_LAZY);
+	_libmaria = dlopen(LIB_MYSQLCLIENT, RTLD_LAZY);
 	if (_libmaria == NULL)
 		return -ENOENT;
 	dMySQL_init = dlsym(_libmaria, "mysql_init");

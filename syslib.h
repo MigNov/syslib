@@ -67,6 +67,11 @@
 #define	CONF_VAR	"SYSLIB_CONFIG"
 #define	CONF_FILE	"/etc/syslib.conf"
 
+#define	LIB_CRYPTSETUP	"libcryptsetup.so"
+#define	LIB_SQLITE3	"libsqlite3.so"
+#define	LIB_PGSQLPQ	"libpq.so"
+#define	LIB_MYSQLCLIENT	"libmysqlclient.so"
+
 #define	ARRAY_CARDINALITY(x)	(sizeof(x) / sizeof(x[0]))
 
 /* Error codes */
@@ -506,6 +511,7 @@ extern int    syslibCryptMkdir(char *path, char *password, char *dir, char *perm
 extern tDirListing syslibCryptList(char *path, char *password, char *dir);
 extern int    syslibCryptFileWrite(char *path, char *password, char *fpath, char *data);
 extern int    syslibCryptFileCopy(char *path, char *password, char *sourceFile, char *destFile);
+extern int    syslibCryptFileMove(char *path, char *password, char *sourceFile, char *destFile);
 extern int    syslibCryptFileDelete(char *path, char *password, char *fpath);
 extern char * syslibCryptFileRead(char *path, char *password, char *fpath);
 extern tCryptSpace syslibCryptGetSpace(char *path, char *password);
