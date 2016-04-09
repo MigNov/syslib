@@ -3538,7 +3538,7 @@ int _syslibCryptFileCopy(const char *mp, const char *arg1, const char *arg2)
 		snprintf(fpath, sizeof(fpath), "cp %s/%s %s", mp, arg2, arg1);
 	else
 	if ((arg1[0] != '/') && (arg2[0] != '/'))
-		snprintf(fpath, sizeof(fpath), "cp %s/%s %s/%s", arg1, mp, arg2, arg1);
+		snprintf(fpath, sizeof(fpath), "cp %s/%s %s/%s", mp, arg1, mp, arg2);
 	else
 		return -EINVAL;
 
@@ -3562,7 +3562,7 @@ int _syslibCryptFileMove(const char *mp, const char *arg1, const char *arg2)
 		snprintf(fpath, sizeof(fpath), "mv %s/%s %s", mp, arg2, arg1);
 	else
 	if ((arg1[0] != '/') && (arg2[0] != '/'))
-		snprintf(fpath, sizeof(fpath), "mv %s/%s %s/%s", arg1, mp, arg2, arg1);
+		snprintf(fpath, sizeof(fpath), "mv %s/%s %s/%s", mp, arg1, mp, arg2);
 	else
 		return -EINVAL;
 
