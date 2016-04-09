@@ -1,42 +1,7 @@
 #ifndef SYSLIB_H
 #define SYSLIB_H
 
-#include <math.h>
-#include <time.h>
-#include <ctype.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <errno.h>
-#include <libgen.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <signal.h>
-#include <malloc.h>
-#include <mntent.h>
-#include <string.h>
-#include <dirent.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <sys/vfs.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <sys/reboot.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <sys/syscall.h>
 #include <linux/ethtool.h>
-#include <linux/sockios.h>
-#include <linux/netdevice.h>
-
-#include <sqlite3.h>
-#include <dlfcn.h>
-#include <termios.h>
-
-#include <libcryptsetup.h>
 
 #define	IF_RXCS		0x01
 #define	IF_TXCS		0x02
