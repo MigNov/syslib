@@ -22,28 +22,31 @@ int main(void)
 	}
 	free(parts);
 
-	int rx, rx_mini, rx_jumbo;
-	syslibInterfaceGetRxRingSize(INTERFACE, &rx, &rx_mini, &rx_jumbo);
-	printf("Interface %s: RX ring size is %d\n", INTERFACE, rx);
-	if (syslibInterfaceGetFlag(INTERFACE, IF_TSO) == 1) {
-		printf("Interface %s: TCP-Segment-offloading enabled. Disabling ... ", INTERFACE);
-		if (syslibInterfaceSetFlag(INTERFACE, IF_TSO, 0) == 0)
-			printf("done\n");
+	char *drv = syslibInterfaceGetDriver(INTERFACE);
+	if (drv != NULL) {
+		int rx, rx_mini, rx_jumbo;
+		syslibInterfaceGetRxRingSize(INTERFACE, &rx, &rx_mini, &rx_jumbo);
+		printf("Interface %s: RX ring size is %d\n", INTERFACE, rx);
+		if (syslibInterfaceGetFlag(INTERFACE, IF_TSO) == 1) {
+			printf("Interface %s: TCP-Segment-offloading enabled. Disabling ... ", INTERFACE);
+			if (syslibInterfaceSetFlag(INTERFACE, IF_TSO, 0) == 0)
+				printf("done\n");
+			else
+				printf("error!\n");
+		}
 		else
-			printf("error!\n");
-	}
-	else
-		printf("Interface %s: TCP-Segment-offloading disabled - OK\n", INTERFACE);
+			printf("Interface %s: TCP-Segment-offloading disabled - OK\n", INTERFACE);
 
-	if (syslibInterfaceGetPromisc(INTERFACE) == 0) {
-		printf("Interface %s: Not in promisc. mode. Enabling ... ", INTERFACE);
-		if (syslibInterfaceSetPromisc(INTERFACE, 1) == 0)
-			printf("done\n");
+		if (syslibInterfaceGetPromisc(INTERFACE) == 0) {
+			printf("Interface %s: Not in promisc. mode. Enabling ... ", INTERFACE);
+			if (syslibInterfaceSetPromisc(INTERFACE, 1) == 0)
+				printf("done\n");
+			else
+				printf("error!\n");
+		}
 		else
-			printf("error!\n");
+			printf("Interface %s is already promisc. mode\n", INTERFACE);
 	}
-	else
-		printf("Interface %s is already promisc. mode\n", INTERFACE);
 
 	int app22 = syslibGetProcessIDByPort(22);
 	if (app22 == 0)
@@ -53,7 +56,6 @@ int main(void)
 
 	printf("syslibSysctlGet('net.core.rmem_max') returned %d\n", syslibSysctlGet("net.core.rmem_max"));
 
-	char *drv = syslibInterfaceGetDriver(INTERFACE);
 	char *drvVer = syslibInterfaceGetDriverVersion(INTERFACE);
 	char *drvBus = syslibInterfaceGetDriverBusInfo(INTERFACE);
 	char *drvFW = syslibInterfaceGetDriverFWVersion(INTERFACE);
