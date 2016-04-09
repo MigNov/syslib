@@ -36,7 +36,7 @@ testbug:
 
 verrev:
 	@echo "#ifndef VERSION_REV" > version_rev.h
-	@if git diff > /dev/null; then echo "#define VERSION_REV \"git-$(shell git log --oneline --pretty=%h | head -n 1)-dirty\"" >> version_rev.h; else echo "#define VERSION_REV \"git-$(shell git log --oneline --pretty=%h | head -n 1)\"" >> version_rev.h; fi
+	@if [ "$(shell git diff | wc -l)" -gt 0 ]; then echo "#define VERSION_REV \"git-$(shell git log --oneline --pretty=%h | head -n 1)-dirty\"" >> version_rev.h; else echo "#define VERSION_REV \"git-$(shell git log --oneline --pretty=%h | head -n 1)\"" >> version_rev.h; fi
 	@echo "#endif" >> version_rev.h
 
 compile: verrev
