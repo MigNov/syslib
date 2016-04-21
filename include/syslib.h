@@ -217,6 +217,9 @@ extern tCryptSpace syslibCryptGetSpace(char *path, char *password);
 extern tDirListing syslibCryptLs(char *path, char *password, char *dir);
 extern void   syslibDirListingFree(tDirListing dl);
 
+extern int    syslibRAMDiskCreate(int size, char *path);
+extern int    syslibRAMDiskUnmount(int size);
+
 extern char * syslibDBGetType(void);
 extern int    syslibDBGetTypeID(void);
 extern char  *syslibGetIdentification(void);

@@ -3171,6 +3171,36 @@ int syslibDeviceMount(char *dev, char *path)
 }
 
 /**
+ * Create RAMDisk
+ *
+ * @param size    size of ramdisk to create in MiB
+ * @param path    path to mount
+ * @return application error code
+ */
+int syslibRAMDiskCreate(int size, char *path)
+{
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "mount -t tmpfs -o size=%dm tmpfs %s > /dev/null 2>&1; sync", size, path);
+	return syslibCommandRun(cmd);
+}
+
+/**
+ * Remove RAMDisk
+ *
+ * @param path     ramfs path to unmount
+ * @return application error code
+ */
+
+int syslibRAMDiskUnmount(int size)
+{
+	char cmd[1024] = { 0 };
+
+	snprintf(cmd, sizeof(cmd), "umount %s > /dev/null 2>&1", path);
+	return syslibCommandRun(cmd);
+}
+
+/**
  * Mount device from path
  *
  * @param  path    path to unmount
