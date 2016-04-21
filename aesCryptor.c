@@ -198,9 +198,9 @@ char *systemGetUUID(void)
 	char *uuid = NULL;
 
 	// No root required
-	if ((uuid = systemGetUUID_binary()) != NULL)
-		return uuid;
 	if ((uuid = systemGetUUID_file()) != NULL)
+		return uuid;
+	if ((uuid = systemGetUUID_binary()) != NULL)
 		return uuid;
 	// Requires root access
 	if ((uuid = systemGetUUID_dmidecode()) != NULL)

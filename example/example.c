@@ -128,16 +128,26 @@ int main(void)
 	printf("UUID: %s\n", uuid);
 	free(uuid);
 
+	printf("Running encryption using AES-128 ...\n");
+
 	/* Test AES-128 encryption and decryption */
 	char *enc = syslibAESEncrypt("test", 0);
+
+	printf("Running decryption using AES-128 ...\n");
+
 	char *dec = syslibAESDecrypt(enc);
 	printf("[AES-128] Encrypted 'test': %s\n", enc);
 	printf("[AES-128] Decrypted '%s': %s\n", enc, dec);
 	free(enc);
 	free(dec);
 
+	printf("Running encryption using AES-256 ...\n");
+
 	/* Test AES-256 encryption and decryption */
 	char *enc2 = syslibAESEncrypt("test", 1);
+
+	printf("Running decryption using AES-256 ...\n");
+
 	char *dec2 = syslibAESDecrypt(enc2);
 	printf("[AES-256] Encrypted 'test': %s\n", enc2);
 	printf("[AES-256] Decrypted '%s': %s\n", enc2, dec2);

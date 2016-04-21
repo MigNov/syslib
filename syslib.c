@@ -3151,6 +3151,9 @@ int syslibFileCreateFileSystemExt4(char *path)
 {
 	char cmd[1024] = { 0 };
 
+	if (!syslibIsPrivileged())
+		return -EPERM;
+
 	snprintf(cmd, sizeof(cmd), "mkfs -t ext4 -m 0 %s > /dev/null 2>&1; sync", path);
 	return syslibCommandRun(cmd);
 }
@@ -3165,6 +3168,9 @@ int syslibFileCreateFileSystemExt4(char *path)
 int syslibDeviceMount(char *dev, char *path)
 {
 	char cmd[1024] = { 0 };
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	snprintf(cmd, sizeof(cmd), "mount %s %s > /dev/null 2>&1; sync", dev, path);
 	return syslibCommandRun(cmd);
@@ -3181,6 +3187,9 @@ int syslibRAMDiskCreate(int size, char *path)
 {
 	char cmd[1024] = { 0 };
 
+	if (!syslibIsPrivileged())
+		return -EPERM;
+
 	snprintf(cmd, sizeof(cmd), "mount -t tmpfs -o size=%dm tmpfs %s > /dev/null 2>&1; sync", size, path);
 	return syslibCommandRun(cmd);
 }
@@ -3192,9 +3201,12 @@ int syslibRAMDiskCreate(int size, char *path)
  * @return application error code
  */
 
-int syslibRAMDiskUnmount(int size)
+int syslibRAMDiskUnmount(char *path)
 {
 	char cmd[1024] = { 0 };
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	snprintf(cmd, sizeof(cmd), "umount %s > /dev/null 2>&1", path);
 	return syslibCommandRun(cmd);
@@ -3210,6 +3222,9 @@ int syslibDeviceUnmount(char *path)
 {
 	int rc;
 	char cmd[1024] = { 0 };
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	snprintf(cmd, sizeof(cmd), "umount %s > /dev/null 2>&1; sync", path);
 	return syslibCommandRun(cmd);
@@ -3227,6 +3242,9 @@ int syslibCryptCreate(const char *path, char *password)
 	struct crypt_device *cd;
 	struct crypt_params_luks1 params;
 	int r;
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	if (_hasCrypt == 0)
 		return -ENOTSUP;
@@ -3279,6 +3297,9 @@ int syslibCryptActivate(const char *path, const char *password, char *device_nam
 	struct crypt_device *cd;
 	int r;
 
+	if (!syslibIsPrivileged())
+		return -EPERM;
+
 	if (_hasCrypt == 0)
 		return -ENOTSUP;
 
@@ -3321,6 +3342,9 @@ int syslibCryptDeactivate(char *device_name)
 {
 	struct crypt_device *cd;
 	int r;
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	if (_hasCrypt == 0)
 		return -ENOTSUP;
@@ -3366,6 +3390,9 @@ int syslibCryptCreateWithExt4(char *path, size_t size, char *password)
 	char cmd[1024] = { 0 };
 	char tmp[] = "/dev/mapper/cryptdevXXXXXX";
 
+	if (!syslibIsPrivileged())
+		return -EPERM;
+
 	mkstemp(tmp);
 	dev = basename(tmp);
 
@@ -3391,6 +3418,9 @@ cleanup:
 	if (syslibCryptDeactivate(dev))
 		return -5;
 
+	rmdir(tmp);
+	unlink(tmp);
+
 	return ret;
 }
 
@@ -3404,6 +3434,9 @@ cleanup:
 int syslibCryptMount(char *device_name, char *path)
 {
 	char dev[1024] = { 0 };
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	snprintf(dev, sizeof(dev), "/dev/mapper/%s", device_name);
 
@@ -3422,6 +3455,9 @@ int syslibCryptMount(char *device_name, char *path)
 int syslibCryptUnmount(char *device_name)
 {
 	char dev[1024] = { 0 };
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	snprintf(dev, sizeof(dev), "/dev/mapper/%s", device_name);
 
@@ -3447,6 +3483,9 @@ int syslibCryptRunFunc(char *path, char *password, tRunFunc func, const char *ar
 	char *dev = NULL;
 	char tmp[] = "/dev/mapper/cryptdevXXXXXX";
 	char tmpMp[] = "/tmp/cryptmountXXXXXX";
+
+	if (!syslibIsPrivileged())
+		return -EPERM;
 
 	mkstemp(tmp);
 	mkdtemp(tmpMp);

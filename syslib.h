@@ -519,7 +519,7 @@ extern tDirListing syslibCryptLs(char *path, char *password, char *dir);
 extern void   syslibDirListingFree(tDirListing dl);
 
 extern int    syslibRAMDiskCreate(int size, char *path);
-extern int    syslibRAMDiskUnmount(int size);
+extern int    syslibRAMDiskUnmount(char *path);
 
 extern int    syslibSQLiteInit(void);
 extern int    syslibHasSQLite(void);
