@@ -1519,8 +1519,10 @@ char *_syslibSystemUUID(void)
 	fgets(uuid, sizeof(uuid), fp);
 	fclose(fp);
 
-	if (strnlen(uuid, sizeof(uuid)) > 0)
-		uuid[strnlen(uuid, sizeof(uuid)) - 1] = 0;
+	if (strnlen(uuid, sizeof(uuid)) > 0) {
+		if (uuid[strnlen(uuid, sizeof(uuid)) - 1] == '\n')
+			uuid[strnlen(uuid, sizeof(uuid)) - 1] = 0;
+	}
 	else {
 		logWrite(LOG_LEVEL_DEBUG, "%s: Cannot read machine ID from system. Trying to get host ID ...\n", __FUNCTION__);
 		return systemHostID();
@@ -1556,8 +1558,10 @@ char *syslibSystemUUID(void)
 	fgets(buf, sizeof(buf), fp);
 	fclose(fp);
 
-	if (strnlen(buf, sizeof(buf)) > 0)
-		buf[strnlen(buf, sizeof(buf)) - 1] = 0;
+	if (strnlen(buf, sizeof(buf)) > 0) {
+		if (buf[strnlen(buf, sizeof(buf)) - 1] == '\n')
+			buf[strnlen(buf, sizeof(buf)) - 1] = 0;
+	}
 
 	logWrite(LOG_LEVEL_DEBUG, "%s: Got machine UUID '%s'\n", __FUNCTION__, buf);
 	return strdup(buf);
