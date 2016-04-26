@@ -10,7 +10,7 @@ INCLUDE=-I`pg_config --includedir`
 OBJECTS=utils.c syslib.c database.c syslib.h aesCryptor.c
 # OPENSSL_armcap=0 environment variable is required for RPi & ARM archs
 
-all: lib-compile lib-test
+all: lib-compile cli-compile lib-test
 
 test: compile runtest
 
@@ -60,6 +60,9 @@ lib-compile: verrev
 	$(CC) -L$(PTH) $(DEBUG) -fpic -o example/example example/example.c -l$(BINARY) $(DB_PGSQL) $(INCLUDE) -lcrypto -pthread -lm
 	$(CC) -L$(PTH) $(DEBUG) -fpic -o example/examplep example/examplep.c -l$(BINARY) $(DB_PGSQL) $(INCLUDE) -lcrypto -pthread -lm
 	rm -f *.gch
+
+cli-compile:
+	$(CC) -o syslib-cli syslib-cli.c -lsyslib -lcrypto -lm -L . -Iinclude
 
 static-lib-compile: verrev
 	$(CC) -Wall -c $(OBJECTS) $(DB_PGSQL) $(DB_MARIA) $(INCLUDE) $(DEBUG) -lcrypto -pthread -ldl -lm

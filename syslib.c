@@ -1597,6 +1597,43 @@ char *syslibAESEncrypt(char *str, int useAES256)
 }
 
 /**
+ * Get AES encrypted string by specified password
+ *
+ * @param str  original string
+ * @param pass password to use
+ * @param useAES256 flag whether to use better encryption (AES-256) or standard AES-128
+ * @return encrypted string in base64 form, $9$ prefixed
+ */
+char *syslibAESEncryptPassword(char *str, char *pass, int useAES256)
+{
+	char ret[4096] = { 0 };
+	char *tmp = NULL;
+
+	if (pass == NULL)
+		return NULL;
+
+	if (str == NULL)
+		return NULL;
+
+	tmp = aesEncryptData(str, pass, 0, useAES256);
+
+	if (tmp == NULL) {
+		logWrite(LOG_LEVEL_ERROR, "Machine specific encryption failed\n");
+		return NULL;
+	}
+
+	if (useAES256)
+		snprintf(ret, sizeof(ret), "$A$%s", tmp);
+	else
+		snprintf(ret, sizeof(ret), "$9$%s", tmp);
+	free(tmp);
+
+	logWrite(LOG_LEVEL_DEBUG, "Machine specific encryption for string '%s' returned '%s'\n",
+		str, ret);
+	return strdup(ret);
+}
+
+/**
  * Decrypt and get AES string ($9$ prefixed) by UUID
  *
  * @param  str  original string
@@ -1604,9 +1641,29 @@ char *syslibAESEncrypt(char *str, int useAES256)
  */
 char *syslibAESDecrypt(char *str)
 {
+        if (str == NULL)
+                return NULL;
+        char *ret = aesDecryptData(str + 3, NULL, 0, (str[1] == 'A') ? 1 : 0);
+        if (ret == NULL)
+                logWrite(LOG_LEVEL_ERROR, "Machine specific decryption failed\n");
+        else
+                logWrite(LOG_LEVEL_DEBUG, "Machine specific decryption for string '%s' returned '%s'\n",
+                        str, ret);
+        return ret;
+}
+
+/**
+ * Decrypt and get AES string ($9$ prefixed) by specified password
+ *
+ * @param  str  original string
+ * @param  pass password for decryption
+ * @return decrypted string
+ */
+char *syslibAESDecryptPassword(char *str, char *pass)
+{
 	if (str == NULL)
 		return NULL;
-	char *ret = aesDecryptData(str + 3, NULL, 0, (str[1] == 'A') ? 1 : 0);
+	char *ret = aesDecryptData(str + 3, pass, 0, (str[1] == 'A') ? 1 : 0);
 	if (ret == NULL)
 		logWrite(LOG_LEVEL_ERROR, "Machine specific decryption failed\n");
 	else

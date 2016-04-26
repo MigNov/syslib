@@ -431,6 +431,8 @@ extern int    syslibGetVersion(int *major, int *minor, int *micro);
 extern char * syslibGetRevision(void);
 extern char * syslibAESEncrypt(char *str, int useAES256);
 extern char * syslibAESDecrypt(char *str);
+extern char * syslibAESEncryptPassword(char *str, char *pass, int useAES256);
+extern char * syslibAESDecryptPassword(char *str, char *pass);
 extern int    syslibEnvSet(char *name, char *val);
 extern char * syslibEnvGet(char *name);
 extern char * syslibGetConnectionString(char *key);
