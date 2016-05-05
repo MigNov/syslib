@@ -491,6 +491,7 @@ extern int    syslibConvertSizeK(float val, char *unit);
 extern unsigned int syslibIPToInt(char *ip);
 extern char * syslibIntToIP(unsigned int ip);
 extern int    syslibIsIPInSubnet(char *ip, char *cidr);
+extern int    syslibGetSubnetIPRange(char *cidr, unsigned int *ipStart, unsigned int *ipEnd);
 extern int    syslibSSHUserStateFileSet(char *fn);
 extern int    syslibUserLoginMessageHandlerSet(void);
 extern int    syslibUserLoginMessageHandlerUnset(void);

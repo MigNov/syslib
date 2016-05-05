@@ -4618,6 +4618,76 @@ int syslibIsIPInSubnet(char *ip, char *cidr)
 }
 
 /*
+ * Get IP address range for CIDR specified address
+ *
+ * @param cidr    CIDR definition
+ * @param ipStart starting IP address in range
+ * @param ipEnd   ending IP address in range
+ * @return number of entries returned as pointers
+ */
+int syslibGetSubnetIPRange(char *cidr, unsigned int *ipStart, unsigned int *ipEnd)
+{
+	int returning = 0;
+	char tmp[33] = { '0' };
+	char tmp2[33] = { '0' };
+	int i,v,d = 0;
+	unsigned int u;
+	tTokenizer t;
+	char *range;
+	int mask;
+
+	t = tokenize(cidr, "/");
+	if (t.numTokens == 0) {
+		tokensFree(t);
+		return -EINVAL;
+	}
+	range = strdup(t.tokens[0]);
+	mask  = atoi(t.tokens[1]);
+	tokensFree(t);
+
+	d = 0;
+	u = syslibIPToInt(range);
+
+	for (i = 31; i >= 0; i--) {
+		v = ((u & (int)(pow(2, i))) == 0) ? 0 : 1;
+		tmp2[d++] = (v == 0) ? '0' : '1';
+		if (d == mask)
+			break;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s00000000", tmp2);
+
+	unsigned int num = 0;
+	for (i = 0; i < 32; i++) {
+		if (tmp[i] == '1')
+			num += (unsigned int)pow(2, 32 - i - 1);
+	}
+	num++;
+
+	if (ipStart != NULL) {
+		*ipStart = num;
+		returning++;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s11111111", tmp2);
+
+	num = 0;
+	for (i = 0; i < 32; i++) {
+		if (tmp[i] == '1')
+			num += (unsigned int)pow(2, 32 - i - 1);
+	}
+	num--;
+
+	if (ipEnd != NULL) {
+		*ipEnd = num;
+		returning++;
+	}
+
+	free(range);
+	return returning;
+}
+
+/*
  * Set SSH user state file and check whether file can be written
  *
  * @param fn state file, can be NULL to check permissions to write default state file
@@ -5750,6 +5820,11 @@ int main()
 	free(dbtype);
 
 	printf("IP address 192.168.122.1 is %u\n", syslibIPToInt("192.168.122.1"));
+
+	unsigned int ipStart, ipEnd;
+	syslibGetSubnetIPRange("192.168.122.1/24", &ipStart, &ipEnd);
+	printf("CIDR %s = { ipStart: %s, ipEnd: %s }\n", "192.168.122.10/24",
+		syslibIntToIP(ipStart), syslibIntToIP(ipEnd));
 
 	char *ip = syslibIntToIP(3232266753);
 	printf("IP address decimal %u is %s\n", 3232266753, ip);
