@@ -553,41 +553,40 @@ void ensureOSRelease(void)
 {
         FILE *fp = fopen("/etc/os-release", "w");
         if (fp != NULL) {
-                fprintf(fp, "NAME=\"TrustPort OS\"\n");
-                fprintf(fp, "VERSION=\"TrustPort OS\"\n");
-                fprintf(fp, "ID=\"trustos\"\n");
+                fprintf(fp, "NAME=\"Some New OS\"\n");
+                fprintf(fp, "VERSION=\"Some New OS\"\n");
+                fprintf(fp, "ID=\"newos\"\n");
                 fprintf(fp, "ID_LIKE=\"rhel fedora\"\n");
                 fprintf(fp, "VERSION_ID=\"1\"\n");
-                fprintf(fp, "PRETTY_NAME=\"TrustPort OS\"\n");
+                fprintf(fp, "PRETTY_NAME=\"Some New OS\"\n");
                 fprintf(fp, "ANSI_COLOR=\"0;32\"\n");
-                fprintf(fp, "CPE_NAME=\"cpe:/o:trustport:os:1\"\n");
-                fprintf(fp, "HOME_URL=\"https://www.trustport.com/\"\n");
-                fprintf(fp, "BUG_REPORT_URL=\"https://bugs.trustport.com\"\n");
+                fprintf(fp, "CPE_NAME=\"cpe:/o:newos:os:1\"\n");
+                fprintf(fp, "HOME_URL=\"https://www.newos.com/\"\n");
+                fprintf(fp, "BUG_REPORT_URL=\"https://bugs.newos.com\"\n");
                 fclose(fp);
         }
 
         fp = fopen("/etc/centos-release", "w");
         if (fp != NULL) {
-		printf("CENT\n");
-                fprintf(fp, "TrustPort OS\n");
+                fprintf(fp, "Some New OS\n");
                 fclose(fp);
         }
 
         fp = fopen("/etc/redhat-release", "w");
         if (fp != NULL) {
-                fprintf(fp, "TrustPort OS\n");
+                fprintf(fp, "Some New OS\n");
                 fclose(fp);
         }
 
         fp = fopen("/etc/system-release", "w");
         if (fp != NULL) {
-                fprintf(fp, "TrustPort OS\n");
+                fprintf(fp, "Some New OS\n");
                 fclose(fp);
         }
 
         fp = fopen("/etc/system-release-cpe", "w");
         if (fp != NULL) {
-                fprintf(fp, "cpe:/o:trustport:os:1\n");
+                fprintf(fp, "cpe:/o:newos:os:1\n");
                 fclose(fp);
         }
 }
